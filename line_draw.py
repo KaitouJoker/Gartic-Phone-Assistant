@@ -27,7 +27,7 @@ class CtkTextboxHandler(logging.Handler):
 class LineDrawApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Gartic Phone Line Drawer v2.4 (Editor Fix)")
+        self.title("Gartic Phone Line Drawer v2.5 (UI Fix)")
         self.geometry("500x950")
         self.grid_columnconfigure(0, weight=1)
 
@@ -44,6 +44,7 @@ class LineDrawApp(ctk.CTk):
         self.num_layers_var = ctk.StringVar(value="1")
         self.layers = []
         self.combination_method_var = ctk.StringVar(value="Union (Combine)")
+        self.layers_visible_var = ctk.BooleanVar(value=True)
 
         self.total_progress_var = ctk.DoubleVar(value=0.0)
         self.total_status_var = ctk.StringVar(value="대기")
@@ -69,19 +70,23 @@ class LineDrawApp(ctk.CTk):
 
         model_layers_frame = ctk.CTkFrame(self)
         model_layers_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
-        model_layers_frame.grid_columnconfigure(1, weight=1)
+        model_layers_frame.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(model_layers_frame, text="모델 레이어", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=3, pady=(5,0))
-        layer_count_frame = ctk.CTkFrame(model_layers_frame, fg_color="transparent")
-        layer_count_frame.grid(row=1, column=0, columnspan=3, pady=5, sticky="ew")
+        ctk.CTkCheckBox(model_layers_frame, text="레이어 설정 펼치기/접기", variable=self.layers_visible_var, onvalue=True, offvalue=False, command=self.toggle_layers_frame).grid(row=1, column=0, columnspan=3, padx=5, pady=5, sticky="w")
+        self.collapsible_layers_frame = ctk.CTkFrame(model_layers_frame, fg_color="transparent")
+        self.collapsible_layers_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=5)
+        self.collapsible_layers_frame.grid_columnconfigure(1, weight=1)
+        layer_count_frame = ctk.CTkFrame(self.collapsible_layers_frame, fg_color="transparent")
+        layer_count_frame.grid(row=0, column=0, columnspan=3, pady=5, sticky="ew")
         layer_count_frame.grid_columnconfigure(2, weight=1)
         ctk.CTkLabel(layer_count_frame, text="레이어 개수:").grid(row=0, column=0, padx=5)
         ctk.CTkEntry(layer_count_frame, textvariable=self.num_layers_var, width=50).grid(row=0, column=1, padx=5)
         ctk.CTkButton(layer_count_frame, text="레이어 업데이트", command=self.update_layer_widgets).grid(row=0, column=2, padx=5, sticky="w")
-        self.layer_scroll_frame = ctk.CTkScrollableFrame(model_layers_frame, label_text="Layers")
-        self.layer_scroll_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=5)
+        self.layer_scroll_frame = ctk.CTkScrollableFrame(self.collapsible_layers_frame, label_text="Layers")
+        self.layer_scroll_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5)
         self.layer_scroll_frame.grid_columnconfigure(1, weight=1)
-        ctk.CTkLabel(model_layers_frame, text="조합 방식:").grid(row=3, column=0, padx=5, pady=10, sticky="w")
-        ctk.CTkOptionMenu(model_layers_frame, variable=self.combination_method_var, values=["Union (Combine)", "Overlay"]).grid(row=3, column=1, columnspan=2, padx=5, pady=10, sticky="ew")
+        ctk.CTkLabel(self.collapsible_layers_frame, text="조합 방식:").grid(row=2, column=0, padx=5, pady=10, sticky="w")
+        ctk.CTkOptionMenu(self.collapsible_layers_frame, variable=self.combination_method_var, values=["Union (Combine)", "Overlay"]).grid(row=2, column=1, columnspan=2, padx=5, pady=10, sticky="ew")
         row_idx += 1
 
         general_settings_frame = ctk.CTkFrame(self); general_settings_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
@@ -139,6 +144,12 @@ class LineDrawApp(ctk.CTk):
             ctk.CTkOptionMenu(self.layer_scroll_frame, variable=layer["model"], values=model_options).grid(row=i, column=1, padx=5, pady=5, sticky="ew")
             ctk.CTkEntry(self.layer_scroll_frame, textvariable=layer["threshold"], placeholder_text="Threshold").grid(row=i, column=2, padx=5, pady=5, sticky="ew")
     
+    def toggle_layers_frame(self):
+        if self.layers_visible_var.get():
+            self.collapsible_layers_frame.grid(row=2, column=0, columnspan=3, sticky="ew", padx=5)
+        else:
+            self.collapsible_layers_frame.grid_forget()
+
     def setup_logging(self):
         self.logger = logging.getLogger(); self.logger.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(message)s', '%H:%M:%S')

@@ -104,7 +104,7 @@ def generate_plan_from_image(final_image, logger, line_epsilon, contour_mode, co
         if cv2.contourArea(cnt) < 4: continue
         approx = cv2.approxPolyDP(cnt, line_epsilon, True)
         line_segment = [tuple(point[0]) for point in approx]
-        if len(line_segment) > 1: line_drawing_plan.append(line_segment)
+        if len(line_segment) > 3: line_drawing_plan.append(line_segment)
     logger.info("그리기 순서를 선 길이에 따라 정렬합니다 (긴 선 먼저)...")
     line_drawing_plan.sort(key=calculate_segment_length, reverse=True)
     return line_drawing_plan
@@ -122,17 +122,23 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
     logger.info(f"이미지를 분석용 크기 {analysis_w}x{analysis_h}로 리사이즈.")
     mode, method = CONTOUR_MODES.get(contour_mode, cv2.RETR_EXTERNAL), CONTOUR_METHODS.get(contour_method, cv2.CHAIN_APPROX_SIMPLE)
     final_contours = []
+    # 1. [Overlay 방식처럼] 각 레이어에서 모든 컨투어를 추출하여 리스트에 저장
+    all_layer_contours = []
+    for layer in pipeline:
+        edges = get_edges_from_model(layer["model"], image_for_analysis, layer["threshold"], logger)
+        if edges is not None:
+            contours, _ = cv2.findContours(edges, mode, method)
+            all_layer_contours.extend(contours)
+
     if combination_method == "Union (Combine)":
-        combined_edges = np.zeros((analysis_h, analysis_w), dtype=np.uint8)
-        for layer in pipeline:
-            edges = get_edges_from_model(layer["model"], image_for_analysis, layer["threshold"], logger)
-            if edges is not None: combined_edges = cv2.bitwise_or(combined_edges, edges)
-        contours, _ = cv2.findContours(combined_edges, mode, method); final_contours.extend(contours)
-    else: # Overlay
-        for layer in pipeline:
-            edges = get_edges_from_model(layer["model"], image_for_analysis, layer["threshold"], logger)
-            if edges is not None:
-                contours, _ = cv2.findContours(edges, mode, method); final_contours.extend(contours)
+        # 2. [Union 방식 개선] 추출된 모든 컨투어를 새 이미지를 만들어 다시 그림
+        reconstructed_image = np.zeros((analysis_h, analysis_w), dtype=np.uint8)
+        cv2.drawContours(reconstructed_image, all_layer_contours, -1, (255), 1)
+        
+        # 3. 다시 그려진 깨끗한 이미지에서 최종 컨투어를 한 번만 찾음
+        final_contours, _ = cv2.findContours(reconstructed_image, mode, method)
+    else:  # Overlay
+        final_contours = all_layer_contours
     logger.info(f"총 {len(final_contours)}개의 최종 컨투어 발견.")
     preview_image = Image.new("RGB", (canvas_width, canvas_height), (255, 255, 255)); preview_draw = ImageDraw.Draw(preview_image)
     scale_factor = target_w / analysis_w if analysis_w > 0 else 0
@@ -142,13 +148,13 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
         if cv2.contourArea(cnt) < 20: continue
         approx = cv2.approxPolyDP(cnt, line_epsilon, True)
         line_segment = [ (x_offset + int(p[0][0] * scale_factor), y_offset + int(p[0][1] * scale_factor)) for p in approx ]
-        if len(line_segment) > 1: temp_plan.append(line_segment)
+        if len(line_segment) > 3: temp_plan.append(line_segment)
     temp_plan.sort(key=calculate_segment_length, reverse=True)
     for segment in temp_plan: preview_draw.line(segment, fill=(0, 0, 0), width=1)
     return crop_image_to_content(preview_image, logger)
 
 class AutoDrawerLine:
-    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.01, mouse_duration=0.005):
+    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.001, mouse_duration=0.005):
         self.line_drawing_plan, self.canvas_area, self.update_callback, self.stop_event, self.logger, self.line_delay, self.mouse_duration = \
             line_drawing_plan, tuple(map(int, canvas_area_str.split(','))), update_cb, stop_event, logger, line_delay, mouse_duration
     def run(self):
