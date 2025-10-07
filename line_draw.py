@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 import customtkinter as ctk
 import threading
 import logging
@@ -34,16 +34,16 @@ class LineDrawApp(ctk.CTk):
         # --- 변수 선언 ---
         self.canvas_area_var = ctk.StringVar()
         self.image_path_var = ctk.StringVar()
-        self.precision_var = ctk.StringVar(value="80%")
-        self.line_epsilon_var = ctk.StringVar(value="1.5")
+        self.precision_var = ctk.StringVar(value="100%")
+        self.line_epsilon_var = ctk.StringVar(value="2.0")
         self.line_delay_var = ctk.StringVar(value="0.01")
-        self.mouse_duration_var = ctk.DoubleVar(value=0.005)
-        self.contour_mode_var = ctk.StringVar(value="외곽선만 찾기")
+        self.mouse_duration_var = ctk.DoubleVar(value=0.0001)
+        self.contour_mode_var = ctk.StringVar(value="모든 선 찾기")
         self.contour_method_var = ctk.StringVar(value="선 압축하기")
         
         self.num_layers_var = ctk.StringVar(value="1")
         self.layers = []
-        self.combination_method_var = ctk.StringVar(value="Overlay")
+        self.combination_method_var = ctk.StringVar(value="Union (Combine)")
 
         self.total_progress_var = ctk.DoubleVar(value=0.0)
         self.total_status_var = ctk.StringVar(value="대기")

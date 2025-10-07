@@ -3,10 +3,9 @@ from tkinter import Toplevel, Canvas
 from PIL import Image, ImageTk, ImageGrab, ImageDraw, ImageOps
 import pyautogui
 import time
-import threading
 import numpy as np
 import cv2
-from pynput import keyboard
+# from pynput import keyboard
 import math
 import logging
 
