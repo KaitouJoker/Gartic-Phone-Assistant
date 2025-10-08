@@ -5,12 +5,63 @@ import pyautogui
 import time
 import numpy as np
 import cv2
-# from pynput import keyboard
 import math
 import logging
+import sys
 
 import torch
 from controlnet_aux import HEDdetector, PidiNetDetector, LineartAnimeDetector
+
+# --- Platform-Specific Mouse Controller ---
+
+class MouseController:
+    """Base class for mouse controllers."""
+    def move_to(self, x, y, duration=0):
+        raise NotImplementedError
+    def mouse_down(self, x, y):
+        raise NotImplementedError
+    def mouse_up(self, x, y):
+        raise NotImplementedError
+
+class PyAutoGUIMouseController(MouseController):
+    """Mouse control using pyautogui."""
+    def move_to(self, x, y, duration=0):
+        pyautogui.moveTo(x, y, duration=duration)
+    def mouse_down(self, x, y):
+        pyautogui.mouseDown()
+    def mouse_up(self, x, y):
+        pyautogui.mouseUp()
+
+class Win32MouseController(MouseController):
+    """Mouse control using win32api for higher performance."""
+    def __init__(self):
+        import win32api, win32con
+        self.win32api = win32api
+        self.win32con = win32con
+
+    def move_to(self, x, y, duration=0): # duration is ignored, but kept for API compatibility
+        self.win32api.SetCursorPos((x, y))
+    def mouse_down(self, x, y):
+        self.win32api.mouse_event(self.win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+    def mouse_up(self, x, y):
+        self.win32api.mouse_event(self.win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+
+def get_mouse_controller(logger):
+    """Factory function to get the best available mouse controller."""
+    if sys.platform == 'win32':
+        try:
+            controller = Win32MouseController()
+            logger.info("Windows 환경 감지: 고성능 win32api 마우스 컨트롤러를 사용합니다.")
+            return controller
+        except ImportError:
+            logger.warning("pywin32 라이브러리를 찾을 수 없습니다. pyautogui로 대체합니다. (pip install pywin32)")
+            return PyAutoGUIMouseController()
+    else:
+        logger.info(f"{sys.platform} 환경 감지: pyautogui 마우스 컨트롤러를 사용합니다.")
+        return PyAutoGUIMouseController()
+
+# --- End of Mouse Controller Section ---
+
 
 model_cache = {}
 CONTOUR_MODES = {"외곽선만 찾기": cv2.RETR_EXTERNAL, "모든 선 찾기": cv2.RETR_LIST, "모든 선 찾기 + 계층": cv2.RETR_TREE}
@@ -154,21 +205,32 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
     return crop_image_to_content(preview_image, logger)
 
 class AutoDrawerLine:
-    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.001, mouse_duration=0.005):
+    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.001, mouse_duration=0):
         self.line_drawing_plan, self.canvas_area, self.update_callback, self.stop_event, self.logger, self.line_delay, self.mouse_duration = \
             line_drawing_plan, tuple(map(int, canvas_area_str.split(','))), update_cb, stop_event, logger, line_delay, mouse_duration
     def run(self):
         pyautogui.FAILSAFE = False; self.logger.info("자동 그리기 시작...")
         total_lines = len(self.line_drawing_plan)
+        last_update_time = time.time()
+
+        # 사용자가 제안한 코드 수정 반영: 시작 지연 제거
+        pyautogui.moveTo(self.canvas_area[0] + self.line_drawing_plan[0][0][0], self.canvas_area[1] + self.line_drawing_plan[0][0][1], duration=0)
+
         for i, line_segment in enumerate(self.line_drawing_plan):
             if self.stop_event.is_set(): break
             if len(line_segment) < 2: continue
-            current_line_num = i + 1; progress_text = f"{current_line_num}/{total_lines}"
-            line_progress = (current_line_num / total_lines) * 100
-            self.update_callback(f"선 {progress_text}", line_progress, progress_text, line_progress)
+
+            # GUI 업데이트 최적화: 0.05초마다 또는 마지막에만 업데이트
+            current_time = time.time()
+            if (current_time - last_update_time > 0.05) or (i == total_lines - 1):
+                current_line_num = i + 1; progress_text = f"{current_line_num}/{total_lines}"
+                line_progress = (current_line_num / total_lines) * 100
+                self.update_callback(f"선 {progress_text}", line_progress, progress_text, line_progress)
+                last_update_time = current_time
+
             first_rel = line_segment[0]
             abs_x0, abs_y0 = self.canvas_area[0] + first_rel[0], self.canvas_area[1] + first_rel[1]
-            pyautogui.moveTo(abs_x0, abs_y0, duration=0.01); time.sleep(0.01)
+            pyautogui.moveTo(abs_x0, abs_y0, duration=0) # 시작점으로 즉시 이동
             pyautogui.mouseDown()
             for point_rel in line_segment[1:]:
                 if self.stop_event.is_set(): break
