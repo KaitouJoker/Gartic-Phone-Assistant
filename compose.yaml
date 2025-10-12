@@ -1,6 +1,0 @@
-services:
-  garticphoneassistantv2:
-    image: garticphoneassistantv2
-    build:
-      context: .
-      dockerfile: ./Dockerfile

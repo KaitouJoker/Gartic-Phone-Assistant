@@ -68,21 +68,35 @@ CONTOUR_MODES = {"외곽선만 찾기": cv2.RETR_EXTERNAL, "모든 선 찾기": 
 CONTOUR_METHODS = {"선 압축하기": cv2.CHAIN_APPROX_SIMPLE, "모든 점 저장하기": cv2.CHAIN_APPROX_NONE}
 
 def load_processor_model(model_name, logger):
-    if model_name in model_cache: logger.info(f"캐시에서 {model_name} 모델을 로드했습니다."); return model_cache[model_name]
+    if model_name in model_cache: 
+        logger.info(f"캐시에서 {model_name} 모델을 로드했습니다.");
+        return model_cache[model_name]
+    
     logger.info(f"{model_name} 모델 로딩 중... (첫 실행 시 시간이 걸릴 수 있습니다)")
     model = None
     try:
-        if model_name == "HED": model = HEDdetector.from_pretrained("lllyasviel/Annotators")
-        elif model_name == "SoftEdge": model = PidiNetDetector.from_pretrained("lllyasviel/Annotators")
-        elif model_name == "Lineart Anime": model = LineartAnimeDetector.from_pretrained("lllyasviel/Annotators")
-        if model: logger.info(f"{model_name} 모델 로딩 완료."); model_cache[model_name] = model
+        if model_name == "HED": 
+            model = HEDdetector.from_pretrained("lllyasviel/Annotators")
+        elif model_name == "SoftEdge": 
+            model = PidiNetDetector.from_pretrained("lllyasviel/Annotators")
+        elif model_name == "Lineart Anime": 
+            model = LineartAnimeDetector.from_pretrained("lllyasviel/Annotators")
+        
+        if model: 
+            logger.info(f"{model_name} 모델 로딩 완료.");
+            # 성능 향상을 위해 모델을 CUDA로 이동 (가능한 경우)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model.to(device)
+            model_cache[model_name] = model
         return model
-    except Exception as e: logger.exception(f"{model_name} 모델 로딩 실패: {e}"); return None
+    except Exception as e: 
+        logger.exception(f"{model_name} 모델 로딩 실패: {e}"); 
+        return None
 
 def load_settings():
     settings = {};
     try:
-        with open("line_draw_setting.txt", "r") as f:
+        with open("line_draw_setting.txt", "r", encoding="utf-8") as f:
             for line in f: key, value = line.strip().split("=", 1); settings[key] = value
     except FileNotFoundError: return {}
     return settings
@@ -91,7 +105,7 @@ def save_settings(app):
     settings = {"CANVAS_AREA": app.canvas_area_var.get(), "IMAGE_PATH": app.image_path_var.get(), "PRECISION": app.precision_var.get(), "LINE_EPSILON": app.line_epsilon_var.get(), "LINE_DELAY": app.line_delay_var.get(), "MOUSE_DURATION": app.mouse_duration_var.get(), "CONTOUR_MODE": app.contour_mode_var.get(), "CONTOUR_METHOD": app.contour_method_var.get(), "COMBINATION_METHOD": app.combination_method_var.get(), "NUM_LAYERS": app.num_layers_var.get()}
     for i, layer in enumerate(app.layers):
         settings[f"L{i+1}_ENABLED"] = layer["enabled"].get(); settings[f"L{i+1}_MODEL"] = layer["model"].get(); settings[f"L{i+1}_THRESHOLD"] = layer["threshold"].get()
-    with open("line_draw_setting.txt", "w") as f:
+    with open("line_draw_setting.txt", "w", encoding="utf-8") as f:
         for key, value in settings.items(): f.write(f"{key}={value}\n")
 
 class AreaSelector:
@@ -127,9 +141,11 @@ def get_edges_from_model(model_name, image, threshold, logger):
     else:
         model = load_processor_model(model_name, logger)
         if model:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu"); model.to(device)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model.to(device)
             logger.info(f"{model_name} 모델 추론 (Threshold: {threshold})...")
-            with torch.no_grad(): edge_map = np.array(model(image, safe_steps=True))
+            with torch.no_grad(): 
+                edge_map = np.array(model(image, safe_steps=True))
             edges = (edge_map > int(255 * threshold)).astype(np.uint8) * 255
             if len(edges.shape) == 3: edges = cv2.cvtColor(edges, cv2.COLOR_BGR2GRAY)
     if edges is not None:
@@ -169,7 +185,7 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
     target_w, target_h = int(img_width * ratio), int(img_height * ratio)
     precision_scale = precision / 100.0
     analysis_w, analysis_h = max(1, int(target_w * precision_scale)), max(1, int(target_h * precision_scale))
-    image_for_analysis = user_image.resize((analysis_w, analysis_h), Image.LANCZOS)
+    image_for_analysis = user_image.resize((analysis_w, analysis_h), Image.Resampling.LANCZOS)
     logger.info(f"이미지를 분석용 크기 {analysis_w}x{analysis_h}로 리사이즈.")
     mode, method = CONTOUR_MODES.get(contour_mode, cv2.RETR_EXTERNAL), CONTOUR_METHODS.get(contour_method, cv2.CHAIN_APPROX_SIMPLE)
     final_contours = []
@@ -278,8 +294,16 @@ class EditorWindow(Toplevel):
         offset_x, offset_y = (canvas_w - disp_w) // 2, (canvas_h - disp_h) // 2
         return scale, offset_x, offset_y, disp_w, disp_h
 
-    def select_pencil(self): self.tool = "pencil"; self.canvas.config(cursor="cross"); self.canvas.itemconfig(self.eraser_cursor, state='hidden')
-    def select_eraser(self): self.tool = "eraser"; self.canvas.config(cursor="none"); self.canvas.itemconfig(self.eraser_cursor, state='normal'); self.update_eraser_cursor(0,0)
+    def select_pencil(self): 
+        self.tool = "pencil"
+        self.canvas.config(cursor="cross")
+        self.canvas.itemconfig(self.eraser_cursor, state='hidden')
+        
+    def select_eraser(self): 
+        self.tool = "eraser"
+        self.canvas.config(cursor="none")
+        self.canvas.itemconfig(self.eraser_cursor, state='normal')
+        self.update_eraser_cursor(0,0)
 
     def on_press(self, event):
         self.last_pos = (event.x, event.y)
@@ -321,7 +345,7 @@ class EditorWindow(Toplevel):
         scale, offset_x, offset_y, new_w, new_h = self._get_display_geometry()
         if scale == 0: return
 
-        disp_img = self.image.resize((new_w, new_h), Image.LANCZOS)
+        disp_img = self.image.resize((new_w, new_h), Image.Resampling.LANCZOS)
         self.photo_image = ImageTk.PhotoImage(disp_img)
         
         # --- 수정된 부분: 이미지 위치를 캔버스 중앙으로 설정 ---
