@@ -5,33 +5,98 @@ import pyautogui
 import time
 import numpy as np
 import cv2
-# from pynput import keyboard
 import math
 import logging
+import sys
 
 import torch
 from controlnet_aux import HEDdetector, PidiNetDetector, LineartAnimeDetector
+
+# --- Platform-Specific Mouse Controller ---
+
+class MouseController:
+    """Base class for mouse controllers."""
+    def move_to(self, x, y, duration=0):
+        raise NotImplementedError
+    def mouse_down(self, x, y):
+        raise NotImplementedError
+    def mouse_up(self, x, y):
+        raise NotImplementedError
+
+class PyAutoGUIMouseController(MouseController):
+    """Mouse control using pyautogui."""
+    def move_to(self, x, y, duration=0):
+        pyautogui.moveTo(x, y, duration=duration)
+    def mouse_down(self, x, y):
+        pyautogui.mouseDown()
+    def mouse_up(self, x, y):
+        pyautogui.mouseUp()
+
+class Win32MouseController(MouseController):
+    """Mouse control using win32api for higher performance."""
+    def __init__(self):
+        import win32api, win32con
+        self.win32api = win32api
+        self.win32con = win32con
+
+    def move_to(self, x, y, duration=0): # duration is ignored, but kept for API compatibility
+        self.win32api.SetCursorPos((x, y))
+    def mouse_down(self, x, y):
+        self.win32api.mouse_event(self.win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
+    def mouse_up(self, x, y):
+        self.win32api.mouse_event(self.win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+
+def get_mouse_controller(logger):
+    """Factory function to get the best available mouse controller."""
+    if sys.platform == 'win32':
+        try:
+            controller = Win32MouseController()
+            logger.info("Windows 환경 감지: 고성능 win32api 마우스 컨트롤러를 사용합니다.")
+            return controller
+        except ImportError:
+            logger.warning("pywin32 라이브러리를 찾을 수 없습니다. pyautogui로 대체합니다. (pip install pywin32)")
+            return PyAutoGUIMouseController()
+    else:
+        logger.info(f"{sys.platform} 환경 감지: pyautogui 마우스 컨트롤러를 사용합니다.")
+        return PyAutoGUIMouseController()
+
+# --- End of Mouse Controller Section ---
+
 
 model_cache = {}
 CONTOUR_MODES = {"외곽선만 찾기": cv2.RETR_EXTERNAL, "모든 선 찾기": cv2.RETR_LIST, "모든 선 찾기 + 계층": cv2.RETR_TREE}
 CONTOUR_METHODS = {"선 압축하기": cv2.CHAIN_APPROX_SIMPLE, "모든 점 저장하기": cv2.CHAIN_APPROX_NONE}
 
 def load_processor_model(model_name, logger):
-    if model_name in model_cache: logger.info(f"캐시에서 {model_name} 모델을 로드했습니다."); return model_cache[model_name]
+    if model_name in model_cache: 
+        logger.info(f"캐시에서 {model_name} 모델을 로드했습니다.");
+        return model_cache[model_name]
+    
     logger.info(f"{model_name} 모델 로딩 중... (첫 실행 시 시간이 걸릴 수 있습니다)")
     model = None
     try:
-        if model_name == "HED": model = HEDdetector.from_pretrained("lllyasviel/Annotators")
-        elif model_name == "SoftEdge": model = PidiNetDetector.from_pretrained("lllyasviel/Annotators")
-        elif model_name == "Lineart Anime": model = LineartAnimeDetector.from_pretrained("lllyasviel/Annotators")
-        if model: logger.info(f"{model_name} 모델 로딩 완료."); model_cache[model_name] = model
+        if model_name == "HED": 
+            model = HEDdetector.from_pretrained("lllyasviel/Annotators")
+        elif model_name == "SoftEdge": 
+            model = PidiNetDetector.from_pretrained("lllyasviel/Annotators")
+        elif model_name == "Lineart Anime": 
+            model = LineartAnimeDetector.from_pretrained("lllyasviel/Annotators")
+        
+        if model: 
+            logger.info(f"{model_name} 모델 로딩 완료.");
+            # 성능 향상을 위해 모델을 CUDA로 이동 (가능한 경우)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model.to(device)
+            model_cache[model_name] = model
         return model
-    except Exception as e: logger.exception(f"{model_name} 모델 로딩 실패: {e}"); return None
+    except Exception as e: 
+        logger.exception(f"{model_name} 모델 로딩 실패: {e}"); 
+        return None
 
 def load_settings():
     settings = {};
     try:
-        with open("line_draw_setting.txt", "r") as f:
+        with open("line_draw_setting.txt", "r", encoding="utf-8") as f:
             for line in f: key, value = line.strip().split("=", 1); settings[key] = value
     except FileNotFoundError: return {}
     return settings
@@ -40,7 +105,7 @@ def save_settings(app):
     settings = {"CANVAS_AREA": app.canvas_area_var.get(), "IMAGE_PATH": app.image_path_var.get(), "PRECISION": app.precision_var.get(), "LINE_EPSILON": app.line_epsilon_var.get(), "LINE_DELAY": app.line_delay_var.get(), "MOUSE_DURATION": app.mouse_duration_var.get(), "CONTOUR_MODE": app.contour_mode_var.get(), "CONTOUR_METHOD": app.contour_method_var.get(), "COMBINATION_METHOD": app.combination_method_var.get(), "NUM_LAYERS": app.num_layers_var.get()}
     for i, layer in enumerate(app.layers):
         settings[f"L{i+1}_ENABLED"] = layer["enabled"].get(); settings[f"L{i+1}_MODEL"] = layer["model"].get(); settings[f"L{i+1}_THRESHOLD"] = layer["threshold"].get()
-    with open("line_draw_setting.txt", "w") as f:
+    with open("line_draw_setting.txt", "w", encoding="utf-8") as f:
         for key, value in settings.items(): f.write(f"{key}={value}\n")
 
 class AreaSelector:
@@ -76,9 +141,11 @@ def get_edges_from_model(model_name, image, threshold, logger):
     else:
         model = load_processor_model(model_name, logger)
         if model:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu"); model.to(device)
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model.to(device)
             logger.info(f"{model_name} 모델 추론 (Threshold: {threshold})...")
-            with torch.no_grad(): edge_map = np.array(model(image, safe_steps=True))
+            with torch.no_grad(): 
+                edge_map = np.array(model(image, safe_steps=True))
             edges = (edge_map > int(255 * threshold)).astype(np.uint8) * 255
             if len(edges.shape) == 3: edges = cv2.cvtColor(edges, cv2.COLOR_BGR2GRAY)
     if edges is not None:
@@ -104,7 +171,7 @@ def generate_plan_from_image(final_image, logger, line_epsilon, contour_mode, co
         if cv2.contourArea(cnt) < 4: continue
         approx = cv2.approxPolyDP(cnt, line_epsilon, True)
         line_segment = [tuple(point[0]) for point in approx]
-        if len(line_segment) > 1: line_drawing_plan.append(line_segment)
+        if len(line_segment) > 3: line_drawing_plan.append(line_segment)
     logger.info("그리기 순서를 선 길이에 따라 정렬합니다 (긴 선 먼저)...")
     line_drawing_plan.sort(key=calculate_segment_length, reverse=True)
     return line_drawing_plan
@@ -118,21 +185,27 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
     target_w, target_h = int(img_width * ratio), int(img_height * ratio)
     precision_scale = precision / 100.0
     analysis_w, analysis_h = max(1, int(target_w * precision_scale)), max(1, int(target_h * precision_scale))
-    image_for_analysis = user_image.resize((analysis_w, analysis_h), Image.LANCZOS)
+    image_for_analysis = user_image.resize((analysis_w, analysis_h), Image.Resampling.LANCZOS)
     logger.info(f"이미지를 분석용 크기 {analysis_w}x{analysis_h}로 리사이즈.")
     mode, method = CONTOUR_MODES.get(contour_mode, cv2.RETR_EXTERNAL), CONTOUR_METHODS.get(contour_method, cv2.CHAIN_APPROX_SIMPLE)
     final_contours = []
+    # 1. [Overlay 방식처럼] 각 레이어에서 모든 컨투어를 추출하여 리스트에 저장
+    all_layer_contours = []
+    for layer in pipeline:
+        edges = get_edges_from_model(layer["model"], image_for_analysis, layer["threshold"], logger)
+        if edges is not None:
+            contours, _ = cv2.findContours(edges, mode, method)
+            all_layer_contours.extend(contours)
+
     if combination_method == "Union (Combine)":
-        combined_edges = np.zeros((analysis_h, analysis_w), dtype=np.uint8)
-        for layer in pipeline:
-            edges = get_edges_from_model(layer["model"], image_for_analysis, layer["threshold"], logger)
-            if edges is not None: combined_edges = cv2.bitwise_or(combined_edges, edges)
-        contours, _ = cv2.findContours(combined_edges, mode, method); final_contours.extend(contours)
-    else: # Overlay
-        for layer in pipeline:
-            edges = get_edges_from_model(layer["model"], image_for_analysis, layer["threshold"], logger)
-            if edges is not None:
-                contours, _ = cv2.findContours(edges, mode, method); final_contours.extend(contours)
+        # 2. [Union 방식 개선] 추출된 모든 컨투어를 새 이미지를 만들어 다시 그림
+        reconstructed_image = np.zeros((analysis_h, analysis_w), dtype=np.uint8)
+        cv2.drawContours(reconstructed_image, all_layer_contours, -1, (255), 1)
+        
+        # 3. 다시 그려진 깨끗한 이미지에서 최종 컨투어를 한 번만 찾음
+        final_contours, _ = cv2.findContours(reconstructed_image, mode, method)
+    else:  # Overlay
+        final_contours = all_layer_contours
     logger.info(f"총 {len(final_contours)}개의 최종 컨투어 발견.")
     preview_image = Image.new("RGB", (canvas_width, canvas_height), (255, 255, 255)); preview_draw = ImageDraw.Draw(preview_image)
     scale_factor = target_w / analysis_w if analysis_w > 0 else 0
@@ -142,27 +215,38 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
         if cv2.contourArea(cnt) < 20: continue
         approx = cv2.approxPolyDP(cnt, line_epsilon, True)
         line_segment = [ (x_offset + int(p[0][0] * scale_factor), y_offset + int(p[0][1] * scale_factor)) for p in approx ]
-        if len(line_segment) > 1: temp_plan.append(line_segment)
+        if len(line_segment) > 3: temp_plan.append(line_segment)
     temp_plan.sort(key=calculate_segment_length, reverse=True)
     for segment in temp_plan: preview_draw.line(segment, fill=(0, 0, 0), width=1)
     return crop_image_to_content(preview_image, logger)
 
 class AutoDrawerLine:
-    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.01, mouse_duration=0.005):
+    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.001, mouse_duration=0):
         self.line_drawing_plan, self.canvas_area, self.update_callback, self.stop_event, self.logger, self.line_delay, self.mouse_duration = \
             line_drawing_plan, tuple(map(int, canvas_area_str.split(','))), update_cb, stop_event, logger, line_delay, mouse_duration
     def run(self):
         pyautogui.FAILSAFE = False; self.logger.info("자동 그리기 시작...")
         total_lines = len(self.line_drawing_plan)
+        last_update_time = time.time()
+
+        # 사용자가 제안한 코드 수정 반영: 시작 지연 제거
+        pyautogui.moveTo(self.canvas_area[0] + self.line_drawing_plan[0][0][0], self.canvas_area[1] + self.line_drawing_plan[0][0][1], duration=0)
+
         for i, line_segment in enumerate(self.line_drawing_plan):
             if self.stop_event.is_set(): break
             if len(line_segment) < 2: continue
-            current_line_num = i + 1; progress_text = f"{current_line_num}/{total_lines}"
-            line_progress = (current_line_num / total_lines) * 100
-            self.update_callback(f"선 {progress_text}", line_progress, progress_text, line_progress)
+
+            # GUI 업데이트 최적화: 0.05초마다 또는 마지막에만 업데이트
+            current_time = time.time()
+            if (current_time - last_update_time > 0.05) or (i == total_lines - 1):
+                current_line_num = i + 1; progress_text = f"{current_line_num}/{total_lines}"
+                line_progress = (current_line_num / total_lines) * 100
+                self.update_callback(f"선 {progress_text}", line_progress, progress_text, line_progress)
+                last_update_time = current_time
+
             first_rel = line_segment[0]
             abs_x0, abs_y0 = self.canvas_area[0] + first_rel[0], self.canvas_area[1] + first_rel[1]
-            pyautogui.moveTo(abs_x0, abs_y0, duration=0.01); time.sleep(0.01)
+            pyautogui.moveTo(abs_x0, abs_y0, duration=0) # 시작점으로 즉시 이동
             pyautogui.mouseDown()
             for point_rel in line_segment[1:]:
                 if self.stop_event.is_set(): break
@@ -210,8 +294,16 @@ class EditorWindow(Toplevel):
         offset_x, offset_y = (canvas_w - disp_w) // 2, (canvas_h - disp_h) // 2
         return scale, offset_x, offset_y, disp_w, disp_h
 
-    def select_pencil(self): self.tool = "pencil"; self.canvas.config(cursor="cross"); self.canvas.itemconfig(self.eraser_cursor, state='hidden')
-    def select_eraser(self): self.tool = "eraser"; self.canvas.config(cursor="none"); self.canvas.itemconfig(self.eraser_cursor, state='normal'); self.update_eraser_cursor(0,0)
+    def select_pencil(self): 
+        self.tool = "pencil"
+        self.canvas.config(cursor="cross")
+        self.canvas.itemconfig(self.eraser_cursor, state='hidden')
+        
+    def select_eraser(self): 
+        self.tool = "eraser"
+        self.canvas.config(cursor="none")
+        self.canvas.itemconfig(self.eraser_cursor, state='normal')
+        self.update_eraser_cursor(0,0)
 
     def on_press(self, event):
         self.last_pos = (event.x, event.y)
@@ -253,7 +345,7 @@ class EditorWindow(Toplevel):
         scale, offset_x, offset_y, new_w, new_h = self._get_display_geometry()
         if scale == 0: return
 
-        disp_img = self.image.resize((new_w, new_h), Image.LANCZOS)
+        disp_img = self.image.resize((new_w, new_h), Image.Resampling.LANCZOS)
         self.photo_image = ImageTk.PhotoImage(disp_img)
         
         # --- 수정된 부분: 이미지 위치를 캔버스 중앙으로 설정 ---
