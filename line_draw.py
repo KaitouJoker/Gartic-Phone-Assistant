@@ -74,6 +74,7 @@ class LineDrawApp(ctk.CTk):
         selection_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkButton(selection_frame, text="1. 캔버스 영역", command=lambda: self.select_area_and_save(self.canvas_area_var)).grid(row=0, column=0, padx=5, pady=5)
         ctk.CTkLabel(selection_frame, textvariable=self.canvas_area_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        ctk.CTkButton(selection_frame, text="가상 캔버스 실행", width=115, fg_color="#4f46e5", hover_color="#4338ca", command=self.launch_kiosk_canvas).grid(row=0, column=2, padx=5, pady=5)
         row_idx += 1
 
         image_frame = ctk.CTkFrame(self.main_scroll)
@@ -300,6 +301,30 @@ class LineDrawApp(ctk.CTk):
     def select_area_and_save(self, var):
         self.withdraw(); time.sleep(0.2); area, _ = fn.select_area(self); self.deiconify()
         if area: var.set(f"{area[0]},{area[1]},{area[2]},{area[3]}"); self.logger.info(f"영역 저장: {var.get()}")
+
+    def launch_kiosk_canvas(self):
+        import subprocess, os, webbrowser
+        html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "gartic_phone_canvas.html"))
+        candidates = [
+            r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+            os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        ]
+        launched = False
+        for exe in candidates:
+            if os.path.exists(exe):
+                try:
+                    subprocess.Popen([exe, "--kiosk", html_path])
+                    self.logger.info(f"가상 캔버스를 키오스크 모드로 실행했습니다: {exe}")
+                    launched = True
+                    break
+                except Exception as e:
+                    self.logger.warning(f"키오스크 모드 실행 실패: {e}")
+        if not launched:
+            webbrowser.open(html_path)
+            self.logger.info("기본 브라우저로 가상 캔버스를 열었습니다.")
 
     def save_current_settings(self): fn.save_settings(self)
     def load_initial_settings(self):
