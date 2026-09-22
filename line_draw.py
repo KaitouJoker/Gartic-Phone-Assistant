@@ -30,9 +30,14 @@ class CtkTextboxHandler(logging.Handler):
 class LineDrawApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Gartic Phone Line Drawer v2.5 (UI Fix)")
-        self.geometry("500x950")
-        self.grid_columnconfigure(0, weight=1)
+        self.title("Gartic Phone Line Drawer v2.5")
+        self.geometry("520x850")
+        self.minsize(460, 500)
+
+        # 메인 스크롤 프레임 (창 크기 조절 시에도 우측 스크롤바로 전체 레이아웃 확인 가능)
+        self.main_scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        self.main_scroll.pack(fill="both", expand=True, padx=2, pady=2)
+        self.main_scroll.grid_columnconfigure(0, weight=1)
 
         # --- 변수 선언 ---
         self.canvas_area_var = ctk.StringVar()
@@ -63,22 +68,22 @@ class LineDrawApp(ctk.CTk):
         # --- GUI 위젯 ---
         row_idx = 0
         
-        selection_frame = ctk.CTkFrame(self)
-        selection_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
+        selection_frame = ctk.CTkFrame(self.main_scroll)
+        selection_frame.grid(row=row_idx, column=0, padx=10, pady=5, sticky="ew")
         selection_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkButton(selection_frame, text="1. 캔버스 영역", command=lambda: self.select_area_and_save(self.canvas_area_var)).grid(row=0, column=0, padx=5, pady=5)
         ctk.CTkLabel(selection_frame, textvariable=self.canvas_area_var).grid(row=0, column=1, padx=5, pady=5, sticky="w")
         row_idx += 1
 
-        image_frame = ctk.CTkFrame(self)
+        image_frame = ctk.CTkFrame(self.main_scroll)
         image_frame.grid(row=row_idx, column=0, padx=10, pady=5, sticky="ew")
         image_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkButton(image_frame, text="2. 그림 업로드", command=lambda: self.upload_image()).grid(row=0, column=0, padx=5, pady=5)
         ctk.CTkLabel(image_frame, textvariable=self.image_path_var, wraplength=320).grid(row=0, column=1, padx=5, pady=5, sticky="w")
         row_idx += 1
 
-        model_layers_frame = ctk.CTkFrame(self)
-        model_layers_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
+        model_layers_frame = ctk.CTkFrame(self.main_scroll)
+        model_layers_frame.grid(row=row_idx, column=0, padx=10, pady=5, sticky="ew")
         model_layers_frame.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(model_layers_frame, text="모델 레이어", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, columnspan=3, pady=(5,0))
         ctk.CTkCheckBox(model_layers_frame, text="레이어 설정 펼치기/접기", variable=self.layers_visible_var, onvalue=True, offvalue=False, command=self.toggle_layers_frame).grid(row=1, column=0, columnspan=3, padx=5, pady=5, sticky="w")
@@ -91,14 +96,14 @@ class LineDrawApp(ctk.CTk):
         ctk.CTkLabel(layer_count_frame, text="레이어 개수:").grid(row=0, column=0, padx=5)
         ctk.CTkEntry(layer_count_frame, textvariable=self.num_layers_var, width=50).grid(row=0, column=1, padx=5)
         ctk.CTkButton(layer_count_frame, text="레이어 업데이트", command=self.update_layer_widgets).grid(row=0, column=2, padx=5, sticky="w")
-        self.layer_scroll_frame = ctk.CTkScrollableFrame(self.collapsible_layers_frame, label_text="Layers")
+        self.layer_scroll_frame = ctk.CTkScrollableFrame(self.collapsible_layers_frame, label_text="Layers", height=160)
         self.layer_scroll_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5)
         self.layer_scroll_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(self.collapsible_layers_frame, text="조합 방식:").grid(row=2, column=0, padx=5, pady=10, sticky="w")
         ctk.CTkOptionMenu(self.collapsible_layers_frame, variable=self.combination_method_var, values=["합 연산 (Union)", "오버레이 (Overlay)", "교집합 (Intersection)"]).grid(row=2, column=1, columnspan=2, padx=5, pady=10, sticky="ew")
         row_idx += 1
 
-        general_settings_frame = ctk.CTkFrame(self); general_settings_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
+        general_settings_frame = ctk.CTkFrame(self.main_scroll); general_settings_frame.grid(row=row_idx, column=0, padx=10, pady=5, sticky="ew")
         general_settings_frame.grid_columnconfigure(1, weight=1)
         gs_row = 0
         ctk.CTkLabel(general_settings_frame, text="정밀도 설정:").grid(row=gs_row, column=0, padx=5, pady=5, sticky="w")
@@ -130,22 +135,21 @@ class LineDrawApp(ctk.CTk):
         ctk.CTkCheckBox(general_settings_frame, text="활성화 (명암에 따라 간격/교차선 자동 가변)", variable=self.hatch_adaptive_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         row_idx += 1
 
-        action_frame = ctk.CTkFrame(self); action_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
+        action_frame = ctk.CTkFrame(self.main_scroll); action_frame.grid(row=row_idx, column=0, padx=10, pady=5, sticky="ew")
         action_frame.grid_columnconfigure(0, weight=1); action_frame.grid_columnconfigure(1, weight=1)
         self.start_button = ctk.CTkButton(action_frame, text="3. 미리보기 및 편집", command=self.start_drawing_process); self.start_button.grid(row=0, column=0, padx=5, pady=5, sticky="ew")
         self.stop_button = ctk.CTkButton(action_frame, text="중지 (ESC 키)", command=self.stop_drawing, state="disabled"); self.stop_button.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
         row_idx += 1
 
-        progress_frame = ctk.CTkFrame(self); progress_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
+        progress_frame = ctk.CTkFrame(self.main_scroll); progress_frame.grid(row=row_idx, column=0, padx=10, pady=5, sticky="ew")
         progress_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(progress_frame, text="진행률:").grid(row=0, column=0, padx=5, pady=2, sticky="w")
         ctk.CTkProgressBar(progress_frame, variable=self.total_progress_var).grid(row=0, column=1, padx=5, pady=2, sticky="ew")
         ctk.CTkLabel(progress_frame, textvariable=self.total_status_var).grid(row=0, column=2, padx=5, pady=2, sticky="e")
         row_idx += 1
 
-        log_frame = ctk.CTkFrame(self); log_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="nsew")
-        self.grid_rowconfigure(row_idx, weight=1)
-        self.log_textbox = ctk.CTkTextbox(log_frame, state="disabled", wrap=tk.WORD); self.log_textbox.pack(expand=True, fill="both", padx=5, pady=5)
+        log_frame = ctk.CTkFrame(self.main_scroll); log_frame.grid(row=row_idx, column=0, padx=10, pady=5, sticky="ew")
+        self.log_textbox = ctk.CTkTextbox(log_frame, state="disabled", wrap=tk.WORD, height=130); self.log_textbox.pack(expand=True, fill="both", padx=5, pady=5)
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.load_initial_settings()
