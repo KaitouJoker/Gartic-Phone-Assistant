@@ -128,7 +128,7 @@ class LineDrawApp(ctk.CTk):
         ctk.CTkLabel(general_settings_frame, text="면 처리 모드:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
         ctk.CTkOptionMenu(general_settings_frame, variable=self.hatch_mode_var, values=["외곽선 + 빗금", "해칭 없음", "순수 빗금", "스켈레톤화"]).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="빗금 패턴:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
-        ctk.CTkOptionMenu(general_settings_frame, variable=self.hatch_pattern_var, values=["45° (대각선)", "135° (역대각선)", "0° (수평)", "90° (수직)", "Cross (격자 빗금)", "Cross-Contour (등고선)", "해칭 없음"]).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
+        ctk.CTkOptionMenu(general_settings_frame, variable=self.hatch_pattern_var, values=["45° (대각선)", "135° (역대각선)", "0° (수평)", "90° (수직)", "크로스 빗금 (Cross)", "격자 빗금 (Grid)", "Cross-Contour (등고선)", "해칭 없음"]).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="기본 빗금 간격 (px):").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
         ctk.CTkEntry(general_settings_frame, textvariable=self.hatch_spacing_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="적응형 명암 빗금:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
@@ -315,7 +315,12 @@ class LineDrawApp(ctk.CTk):
             loaded_comb = "합 연산 (Union)"
         self.combination_method_var.set(loaded_comb)
         self.hatch_mode_var.set(settings.get("HATCH_MODE", "외곽선 + 빗금"))
-        self.hatch_pattern_var.set(settings.get("HATCH_PATTERN", "45° (대각선)"))
+        loaded_pattern = settings.get("HATCH_PATTERN", "45° (대각선)")
+        if loaded_pattern in ("Cross (격자 빗금)", "Cross", "크로스"):
+            loaded_pattern = "크로스 빗금 (Cross)"
+        elif loaded_pattern in ("격자", "Grid"):
+            loaded_pattern = "격자 빗금 (Grid)"
+        self.hatch_pattern_var.set(loaded_pattern)
         self.hatch_spacing_var.set(settings.get("HATCH_SPACING", "8"))
         self.hatch_adaptive_var.set(settings.get("HATCH_ADAPTIVE", "true").lower() == "true")
         self.num_layers_var.set(settings.get("NUM_LAYERS", "1"))

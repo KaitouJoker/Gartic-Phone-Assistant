@@ -11,8 +11,9 @@ hatching_module.py
   2. 135° (역대각선)
   3. 0° (수평)
   4. 90° (수직)
-  5. Cross (격자 빗금)
-  6. Cross-Contour (등고선)
+  5. 크로스 빗금 (Cross) - 45° + 135° 대각선 X자 교차
+  6. 격자 빗금 (Grid) - 0° + 90° 수평/수직 직교 바둑판 모눈 격자
+  7. Cross-Contour (등고선)
 """
 
 import cv2
@@ -24,6 +25,12 @@ from skimage.morphology import skeletonize
 def generate_parallel_hatch_mask(mask: np.ndarray, spacing: int = 8, angle_type: str = "45° (대각선)") -> np.ndarray:
     """
     지정된 각도와 간격으로 마스크 내부에 평행 빗금 선분을 생성합니다.
+    - 45°: 우상향 대각선
+    - 135°: 좌상향 역대각선
+    - 0°/수평: 가로선
+    - 90°/수직: 세로선
+    - 격자/Grid: 0° 수평 + 90° 수직 직교 바둑판 모눈 격자 (+)
+    - 크로스/Cross: 45° 대각선 + 135° 역대각선 X자 교차선 (X)
     """
     h, w = mask.shape
     y, x = np.indices((h, w))
@@ -38,7 +45,11 @@ def generate_parallel_hatch_mask(mask: np.ndarray, spacing: int = 8, angle_type:
         grid = (y % spacing == 0)
     elif "90°" in angle_type or "수직" in angle_type:
         grid = (x % spacing == 0)
-    elif "Cross" in angle_type or "격자" in angle_type:
+    elif "격자" in angle_type or "Grid" in angle_type:
+        # 바둑판 모눈 격자 (0° 수평 + 90° 수직 직교)
+        grid = (y % spacing == 0) | (x % spacing == 0)
+    elif "크로스" in angle_type or "Cross" in angle_type:
+        # 정통 크로스해칭 (45° 대각선 + 135° 역대각선 X자 교차)
         grid = ((x + y) % spacing == 0) | ((x - y) % spacing == 0)
     else:
         grid = ((x + y) % spacing == 0)
@@ -104,12 +115,33 @@ def apply_adaptive_hatching_mask(mask: np.ndarray, orig_gray: np.ndarray, base_s
         canvas[diag_fill] = 255
         return canvas
 
-    # 일반 평행 / 격자 빗금의 적응형 다단계 분할
     y, x = np.indices((h, w))
     diag1 = (x + y)
     diag2 = (x - y)
 
-    # 기본 축 설정
+    s1 = base_spacing * 2
+    s2 = base_spacing
+    s3 = max(2, base_spacing // 2)
+
+    # 1. 격자 빗금 (수평 0° + 수직 90° 직교 바둑판 패턴)
+    if "격자" in pattern or "Grid" in pattern:
+        m1 = (darkness >= 60) & (mask > 0) & ((y % s1 == 0) | (x % s1 == 0))
+        m2 = (darkness >= 120) & (mask > 0) & ((y % s2 == 0) | (x % s2 == 0))
+        m3 = (darkness >= 175) & (mask > 0) & ((y % s3 == 0) | (x % s3 == 0))
+        m4 = (darkness >= 230) & (mask > 0) & ((y % s3 == 0) | (x % s3 == 0))
+        combined_bool = m1 | m2 | m3 | m4
+        return (combined_bool.astype(np.uint8) * 255)
+
+    # 2. 크로스 빗금 (45° 대각선 + 135° 역대각선 X자 교차 패턴)
+    if "크로스" in pattern or "Cross" in pattern:
+        m1 = (darkness >= 60) & (mask > 0) & ((diag1 % s1 == 0) | (diag2 % s1 == 0))
+        m2 = (darkness >= 120) & (mask > 0) & ((diag1 % s2 == 0) | (diag2 % s2 == 0))
+        m3 = (darkness >= 175) & (mask > 0) & ((diag1 % s3 == 0) | (diag2 % s3 == 0))
+        m4 = (darkness >= 230) & (mask > 0) & ((diag1 % s3 == 0) | (diag2 % s3 == 0))
+        combined_bool = m1 | m2 | m3 | m4
+        return (combined_bool.astype(np.uint8) * 255)
+
+    # 3. 단일 방향 평행 빗금 (0°, 90°, 135°, 45°)
     if "0°" in pattern or "수평" in pattern:
         axis1, axis2 = y, x
     elif "90°" in pattern or "수직" in pattern:
@@ -119,15 +151,11 @@ def apply_adaptive_hatching_mask(mask: np.ndarray, orig_gray: np.ndarray, base_s
     else:
         axis1, axis2 = diag1, diag2
 
-    s1 = base_spacing * 2
-    s2 = base_spacing
-    s3 = max(2, base_spacing // 2)
-
-    # Level 1: 밝은 음영 (darkness >= 60)
+    # Level 1: 밝은 음영 (darkness >= 60) -> 단일 주축 넓은 간격
     m1 = (darkness >= 60) & (mask > 0) & (axis1 % s1 == 0)
-    # Level 2: 중간 음영 (darkness >= 120)
+    # Level 2: 중간 음영 (darkness >= 120) -> 단일 주축 기본 간격
     m2 = (darkness >= 120) & (mask > 0) & (axis1 % s2 == 0)
-    # Level 3: 깊은 그림자 (darkness >= 175) -> 교차 축 빗금 추가
+    # Level 3: 깊은 그림자 (darkness >= 175) -> 교차 축 빗금 보조 추가
     m3 = (darkness >= 175) & (mask > 0) & (axis2 % s2 == 0)
     # Level 4: 극암부/먹칠 (darkness >= 230) -> 촘촘한 간격
     m4 = (darkness >= 230) & (mask > 0) & (axis1 % s3 == 0)
