@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>갈틱폰(Gartic Phone) 가상 캔버스 테스트 환경</title>
+    <style>
+        :root {
+            --bg-color: #15172b;
+            --panel-bg: #202444;
+            --panel-border: #2d335f;
+            --accent-blue: #3b82f6;
+            --accent-hover: #60a5fa;
+            --accent-coral: #ef4444;
+            --accent-coral-hover: #f87171;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+            transition: padding 0.2s ease;
+        }
+
+        /* UI 숨김 모드 스타일 */
+        body.ui-hidden {
+            padding: 0;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        body.ui-hidden header,
+        body.ui-hidden .tools-panel,
+        body.ui-hidden .info-bar {
+            display: none !important;
+        }
+
+        body.ui-hidden .workspace {
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            max-width: none;
+        }
+
+        body.ui-hidden .canvas-wrapper {
+            margin: auto;
+        }
+
+        /* 플로팅 UI 토글 힌트 버튼 (UI 숨김 시에도 언제든 복귀 가능) */
+        .floating-controls {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            display: flex;
+            gap: 8px;
+            z-index: 9999;
+            opacity: 0.3;
+            transition: opacity 0.2s ease;
+        }
+
+        .floating-controls:hover {
+            opacity: 1;
+        }
+
+        .float-btn {
+            background-color: rgba(32, 36, 68, 0.85);
+            backdrop-filter: blur(8px);
+            color: #e2e8f0;
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .float-btn:hover {
+            background-color: var(--accent-blue);
+            color: #ffffff;
+            border-color: #93c5fd;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: 800;
+            color: #60a5fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        header p {
+            margin: 4px 0 0;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* 메인 작업 영역 레이아웃 */
+        .workspace {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            max-width: 1400px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        /* 툴바 패널 */
+        .tools-panel {
+            background-color: var(--panel-bg);
+            border: 2px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 16px;
+            width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            max-height: 92vh;
+            overflow-y: auto;
+        }
+
+        .tools-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+        .tools-panel::-webkit-scrollbar-thumb {
+            background: #3b447a;
+            border-radius: 3px;
+        }
+
+        .tool-section {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .tool-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tool-val {
+            color: var(--accent-blue);
+            font-weight: 800;
+            font-size: 13px;
+        }
+
+        /* 버튼 및 프리셋 */
+        .btn-group {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background-color: #2b325c;
+            color: var(--text-main);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            padding: 7px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            flex: 1;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            background-color: #3b447a;
+        }
+
+        .btn.active {
+            background-color: var(--accent-blue);
+            color: #ffffff;
+            border-color: #93c5fd;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        .btn-danger {
+            background-color: #991b1b;
+            color: #fee2e2;
+        }
+        .btn-danger:hover {
+            background-color: var(--accent-coral);
+            color: #ffffff;
+        }
+
+        .btn-action {
+            background-color: #1e3a8a;
+            color: #bfdbfe;
+        }
+        .btn-action:hover {
+            background-color: #2563eb;
+            color: #ffffff;
+        }
+
+        .btn-success {
+            background-color: #065f46;
+            color: #a7f3d0;
+        }
+        .btn-success:hover {
+            background-color: #059669;
+            color: #ffffff;
+        }
+
+        /* 슬라이더 컨트롤 */
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent-blue);
+            height: 6px;
+            background: #111425;
+            border-radius: 4px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* 브러시 미리보기 원 */
+        .brush-preview-box {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 52px;
+            background: #111425;
+            border-radius: 10px;
+            border: 1px dashed var(--panel-border);
+            overflow: hidden;
+        }
+
+        .brush-preview-circle {
+            background-color: #000000;
+            border-radius: 50%;
+            transition: width 0.1s, height 0.1s, opacity 0.1s, background-color 0.1s;
+        }
+
+        /* 색상 팔레트 그리드 */
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 5px;
+        }
+
+        .color-dot {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            box-shadow: inset 0 0 2px rgba(0,0,0,0.5);
+            transition: transform 0.1s, border-color 0.1s;
+        }
+
+        .color-dot:hover {
+            transform: scale(1.15);
+        }
+
+        .color-dot.active {
+            border-color: #ffffff;
+            box-shadow: 0 0 8px #ffffff;
+            transform: scale(1.1);
+        }
+
+        .custom-color-picker {
+            width: 100%;
+            height: 32px;
+            padding: 2px 4px;
+            background-color: #111425;
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        /* 캔버스 래퍼 */
+        .canvas-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #garticCanvas {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+            cursor: crosshair;
+            display: block;
+        }
+
+        /* 하단 정보 바 */
+        .info-bar {
+            display: flex;
+            gap: 12px;
+            background-color: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            padding: 8px 14px;
+            font-size: 12px;
+            color: var(--text-muted);
+            width: 100%;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .info-item b {
+            color: #38bdf8;
+        }
+
+        .copy-btn {
+            background-color: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 2px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            margin-left: 4px;
+        }
+        .copy-btn:hover {
+            background-color: #334155;
+            color: #ffffff;
+        }
+
+        /* 토스트 알림 메시지 */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            background-color: rgba(15, 23, 42, 0.9);
+            color: #38bdf8;
+            border: 1px solid #0284c7;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            transform: translateY(10px);
+            z-index: 10000;
+        }
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 우측 상단 플로팅 컨트롤 (UI 토글 및 전체화면) -->
+    <div class="floating-controls">
+        <button class="float-btn" onclick="toggleUI()" title="UI 표시/숨김 (단축키: Tab 또는 H)">
+            <span id="uiToggleIcon">👁️</span> <span id="uiToggleText">UI 숨기기 (Tab)</span>
+        </button>
+        <button class="float-btn" onclick="toggleFullscreen()" title="전체화면 전환 (단축키: F11)">
+            <span id="fsIcon">⛶</span> <span id="fsText">전체화면 (F11)</span>
+        </button>
+    </div>
+
+    <header>
+        <h1>🎨 Gartic Phone 가상 캔버스 테스트벤치</h1>
+        <p>Gartic Phone Assistant 자동 그리기 매크로 및 브러시 스트로크 정밀 검증용 보드</p>
+    </header>
+
+    <div class="workspace">
+        <!-- 좌측 조작 도구 패널 -->
+        <div class="tools-panel">
+
+            <!-- 1. 도구 선택 (펜 / 지우개) -->
+            <div class="tool-section">
+                <div class="tool-title">그리기 도구</div>
+                <div class="btn-group">
+                    <button class="btn active" id="btnPen" onclick="setTool('pen')">
+                        ✏️ 펜 (B)
+                    </button>
+                    <button class="btn" id="btnEraser" onclick="setTool('eraser')">
+                        🧹 지우개 (E)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 2. 페인팅 굵기 (Brush Size) -->
+            <div class="tool-section">
+                <div class="tool-title">
+                    <span>페인팅 굵기</span>
+                    <span class="tool-val" id="sizeVal">4 px</span>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="sizeSlider" min="1" max="80" value="4" oninput="updateSize(this.value)">
+                </div>
+                <div class="btn-group">
+                    <button class="btn" onclick="updateSize(1)">1px</button>
+                    <button class="btn active" id="size4" onclick="updateSize(4)">4px</button>
+                    <button class="btn" id="size10" onclick="updateSize(10)">10px</button>
+                    <button class="btn" id="size24" onclick="updateSize(24)">24px</button>
+                    <button class="btn" id="size48" onclick="updateSize(48)">48px</button>
+                </div>
+            </div>
+
+            <!-- 3. 페인팅 투명도 (Opacity) -->
+            <div class="tool-section">
+                <div class="tool-title">
+                    <span>페인팅 투명도 (불투명도)</span>
+                    <span class="tool-val" id="opacityVal">100%</span>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="opacitySlider" min="5" max="100" value="100" oninput="updateOpacity(this.value)">
+                </div>
+                <div class="btn-group">
+                    <button class="btn" onclick="updateOpacity(25)">25%</button>
+                    <button class="btn" onclick="updateOpacity(50)">50%</button>
+                    <button class="btn" onclick="updateOpacity(75)">75%</button>
+                    <button class="btn active" id="op100" onclick="updateOpacity(100)">100%</button>
+                </div>
+            </div>
+
+            <!-- 4. 브러시 상태 미리보기 -->
+            <div class="tool-section">
+                <div class="tool-title">브러시 미리보기</div>
+                <div class="brush-preview-box">
+                    <div class="brush-preview-circle" id="brushPreview" style="width: 4px; height: 4px; opacity: 1.0;"></div>
+                </div>
+            </div>
+
+            <!-- 5. 색상 팔레트 -->
+            <div class="tool-section">
+                <div class="tool-title">색상 팔레트</div>
+                <div class="palette-grid" id="palette">
+                    <!-- 기본 갈틱폰 색상표 18종 -->
+                    <div class="color-dot active" style="background:#000000;" onclick="setColor('#000000', this)"></div>
+                    <div class="color-dot" style="background:#555555;" onclick="setColor('#555555', this)"></div>
+                    <div class="color-dot" style="background:#aaaaaa;" onclick="setColor('#aaaaaa', this)"></div>
+                    <div class="color-dot" style="background:#ffffff; border:1px solid #444;" onclick="setColor('#ffffff', this)"></div>
+                    <div class="color-dot" style="background:#ef4444;" onclick="setColor('#ef4444', this)"></div>
+                    <div class="color-dot" style="background:#f97316;" onclick="setColor('#f97316', this)"></div>
+
+                    <div class="color-dot" style="background:#eab308;" onclick="setColor('#eab308', this)"></div>
+                    <div class="color-dot" style="background:#22c55e;" onclick="setColor('#22c55e', this)"></div>
+                    <div class="color-dot" style="background:#06b6d4;" onclick="setColor('#06b6d4', this)"></div>
+                    <div class="color-dot" style="background:#3b82f6;" onclick="setColor('#3b82f6', this)"></div>
+                    <div class="color-dot" style="background:#a855f7;" onclick="setColor('#a855f7', this)"></div>
+                    <div class="color-dot" style="background:#ec4899;" onclick="setColor('#ec4899', this)"></div>
+
+                    <div class="color-dot" style="background:#78350f;" onclick="setColor('#78350f', this)"></div>
+                    <div class="color-dot" style="background:#b45309;" onclick="setColor('#b45309', this)"></div>
+                    <div class="color-dot" style="background:#14532d;" onclick="setColor('#14532d', this)"></div>
+                    <div class="color-dot" style="background:#1e3a8a;" onclick="setColor('#1e3a8a', this)"></div>
+                    <div class="color-dot" style="background:#581c87;" onclick="setColor('#581c87', this)"></div>
+                    <div class="color-dot" style="background:#fbcfe8;" onclick="setColor('#fbcfe8', this)"></div>
+                </div>
+                <input type="color" id="customColor" class="custom-color-picker" value="#000000" onchange="setColor(this.value)">
+            </div>
+
+            <!-- 6. 초기화 및 액션 도구 -->
+            <div class="tool-section">
+                <div class="tool-title">캔버스 제어</div>
+                <div class="btn-group">
+                    <button class="btn btn-action" onclick="undo()" title="실행 취소 (Ctrl+Z)">↩ 실행 취소</button>
+                    <button class="btn btn-action" onclick="redo()" title="다시 실행 (Ctrl+Y)">↪ 다시 실행</button>
+                </div>
+                <button class="btn btn-danger" style="margin-top: 4px;" onclick="clearCanvas()" title="캔버스 전체 흰색 초기화 (C)">
+                    🗑️ 모두 초기화 (Clear All)
+                </button>
+                <div class="btn-group" style="margin-top: 4px;">
+                    <button class="btn btn-success" onclick="saveAsWebp()" title="고화질 WebP 형식으로 저장">
+                        🌐 WebP 저장
+                    </button>
+                    <button class="btn btn-action" onclick="saveAsPng()" title="무손실 PNG 형식으로 저장">
+                        💾 PNG 저장
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- 우측 캔버스 영역 -->
+        <div class="canvas-wrapper">
+            <canvas id="garticCanvas" width="960" height="540"></canvas>
+            
+            <div class="info-bar">
+                <div class="info-item">
+                    좌표: <b id="posInfo">X: 0, Y: 0</b>
+                </div>
+                <div class="info-item">
+                    획수: <b id="strokeCount">0</b> 개
+                </div>
+                <div class="info-item">
+                    점: <b id="pointCount">0</b> pt
+                </div>
+                <div class="info-item">
+                    수신: <b id="hzVal">0</b> Hz
+                </div>
+                <div class="info-item">
+                    <span>CANVAS_AREA: <b id="areaCoords">계산 중...</b></span>
+                    <button class="copy-btn" onclick="copyAreaCoords()">좌표 복사</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 토스트 알림창 -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const canvas = document.getElementById('garticCanvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+        // 상태 변수
+        let currentTool = 'pen'; // 'pen' 또는 'eraser'
+        let currentColor = '#000000';
+        let currentSize = 4;
+        let currentOpacity = 1.0;
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let isUIHidden = false;
+
+        // 통계 및 히스토리
+        let totalStrokes = 0;
+        let totalPoints = 0;
+        let historyStack = [];
+        let redoStack = [];
+        const MAX_HISTORY = 30;
+
+        // Hz 측정
+        let mouseEventsThisSecond = 0;
+        let lastSecondTime = performance.now();
+
+        // 캔버스 초기화 (흰색 배경)
+        function initCanvas() {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            saveState();
+            setTimeout(updateAreaCoords, 100);
+        }
+
+        // 히스토리 저장
+        function saveState() {
+            redoStack = [];
+            if (historyStack.length >= MAX_HISTORY) {
+                historyStack.shift();
+            }
+            historyStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        }
+
+        // 토스트 알림 표시 함수
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // UI 토글 (On / Off)
+        function toggleUI() {
+            isUIHidden = !isUIHidden;
+            document.body.classList.toggle('ui-hidden', isUIHidden);
+            
+            const icon = document.getElementById('uiToggleIcon');
+            const text = document.getElementById('uiToggleText');
+            if (isUIHidden) {
+                icon.innerText = '👁️';
+                text.innerText = 'UI 보이기 (Tab)';
+                showToast("UI 숨김 모드 활성화 (Tab / H로 복귀)");
+            } else {
+                icon.innerText = '🕶️';
+                text.innerText = 'UI 숨기기 (Tab)';
+                showToast("UI 표시 모드");
+            }
+            setTimeout(updateAreaCoords, 250);
+        }
+
+        // 전체화면 토글 (F11 대응)
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.warn(`전체화면 진입 실패: ${err.message}`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // 전체화면 상태 변경 감지
+        document.addEventListener('fullscreenchange', () => {
+            const isFS = !!document.fullscreenElement;
+            document.getElementById('fsIcon').innerText = isFS ? '🗗' : '⛶';
+            document.getElementById('fsText').innerText = isFS ? '창 모드 (F11)' : '전체화면 (F11)';
+            setTimeout(updateAreaCoords, 300);
+        });
+
+        // 도구 변경 (펜 / 지우개)
+        function setTool(tool) {
+            currentTool = tool;
+            document.getElementById('btnPen').classList.toggle('active', tool === 'pen');
+            document.getElementById('btnEraser').classList.toggle('active', tool === 'eraser');
+            updateBrushPreview();
+        }
+
+        // 굵기 변경
+        function updateSize(size) {
+            currentSize = parseInt(size);
+            document.getElementById('sizeSlider').value = currentSize;
+            document.getElementById('sizeVal').innerText = `${currentSize} px`;
+
+            // 프리셋 버튼 active 토글
+            [1, 4, 10, 24, 48].forEach(s => {
+                const el = document.getElementById(`size${s}`);
+                if (el) el.classList.toggle('active', s === currentSize);
+            });
+
+            updateBrushPreview();
+        }
+
+        // 투명도 변경
+        function updateOpacity(val) {
+            currentOpacity = parseInt(val) / 100.0;
+            document.getElementById('opacitySlider').value = val;
+            document.getElementById('opacityVal').innerText = `${val}%`;
+
+            // 프리셋 버튼 active 토글
+            [25, 50, 75, 100].forEach(op => {
+                const el = document.getElementById(`op${op}`);
+                if (el) el.classList.toggle('active', op === parseInt(val));
+            });
+
+            updateBrushPreview();
+        }
+
+        // 색상 변경
+        function setColor(hex, el = null) {
+            currentColor = hex;
+            document.getElementById('customColor').value = hex;
+
+            // 팔레트 active 표시
+            document.querySelectorAll('.color-dot').forEach(dot => dot.classList.remove('active'));
+            if (el) {
+                el.classList.add('active');
+            }
+
+            // 색상 변경 시 자동으로 펜 모드로 복귀
+            if (currentTool === 'eraser') {
+                setTool('pen');
+            }
+
+            updateBrushPreview();
+        }
+
+        // 브러시 미리보기 업데이트
+        function updateBrushPreview() {
+            const preview = document.getElementById('brushPreview');
+            preview.style.width = `${Math.min(currentSize, 50)}px`;
+            preview.style.height = `${Math.min(currentSize, 50)}px`;
+            preview.style.opacity = currentOpacity;
+            preview.style.backgroundColor = (currentTool === 'eraser') ? '#ffffff' : currentColor;
+            preview.style.border = (currentTool === 'eraser') ? '2px dashed #94a3b8' : 'none';
+        }
+
+        // 캔버스 모두 초기화
+        function clearCanvas() {
+            saveState();
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            totalStrokes = 0;
+            totalPoints = 0;
+            document.getElementById('strokeCount').innerText = '0';
+            document.getElementById('pointCount').innerText = '0';
+            showToast("캔버스가 초기화되었습니다.");
+        }
+
+        // 실행 취소
+        function undo() {
+            if (historyStack.length > 1) {
+                redoStack.push(historyStack.pop());
+                const state = historyStack[historyStack.length - 1];
+                ctx.putImageData(state, 0, 0);
+            }
+        }
+
+        // 다시 실행
+        function redo() {
+            if (redoStack.length > 0) {
+                const state = redoStack.pop();
+                historyStack.push(state);
+                ctx.putImageData(state, 0, 0);
+            }
+        }
+
+        // 마우스 좌표 변환
+        function getCanvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            return {
+                x: Math.round((e.clientX - rect.left) * scaleX),
+                y: Math.round((e.clientY - rect.top) * scaleY)
+            };
+        }
+
+        // 드로잉 이벤트 리스너
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // 좌클릭만
+            isDrawing = true;
+            totalStrokes++;
+            document.getElementById('strokeCount').innerText = totalStrokes;
+
+            const pos = getCanvasPos(e);
+            lastX = pos.x;
+            lastY = pos.y;
+
+            // 단일 클릭 시 원형 점 그리기
+            ctx.save();
+            ctx.lineWidth = currentSize;
+            ctx.globalAlpha = currentOpacity;
+            ctx.strokeStyle = (currentTool === 'eraser') ? '#ffffff' : currentColor;
+            ctx.fillStyle = (currentTool === 'eraser') ? '#ffffff' : currentColor;
+
+            ctx.beginPath();
+            ctx.arc(lastX, lastY, currentSize / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+
+            totalPoints++;
+            document.getElementById('pointCount').innerText = totalPoints;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            // Hz 측정
+            mouseEventsThisSecond++;
+            const now = performance.now();
+            if (now - lastSecondTime >= 1000) {
+                document.getElementById('hzVal').innerText = mouseEventsThisSecond;
+                mouseEventsThisSecond = 0;
+                lastSecondTime = now;
+            }
+
+            const pos = getCanvasPos(e);
+            document.getElementById('posInfo').innerText = `X: ${pos.x}, Y: ${pos.y}`;
+
+            if (!isDrawing) return;
+
+            ctx.save();
+            ctx.lineWidth = currentSize;
+            ctx.globalAlpha = currentOpacity;
+            ctx.strokeStyle = (currentTool === 'eraser') ? '#ffffff' : currentColor;
+
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+            ctx.restore();
+
+            lastX = pos.x;
+            lastY = pos.y;
+
+            totalPoints++;
+            document.getElementById('pointCount').innerText = totalPoints;
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDrawing) {
+                isDrawing = false;
+                saveState();
+            }
+        });
+
+        // 키보드 단축키
+        window.addEventListener('keydown', (e) => {
+            // F11: 전체화면 토글
+            if (e.key === 'F11') {
+                e.preventDefault();
+                toggleFullscreen();
+                return;
+            }
+
+            // Tab 또는 H: UI 토글 (캔버스 가림 방지)
+            if (e.key === 'Tab' || e.key.toLowerCase() === 'h') {
+                e.preventDefault();
+                toggleUI();
+                return;
+            }
+
+            // Ctrl+Z: 실행 취소
+            if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (e.shiftKey) redo();
+                else undo();
+                return;
+            }
+            
+            // Ctrl+Y: 다시 실행
+            if (e.ctrlKey && e.key.toLowerCase() === 'y') {
+                e.preventDefault();
+                redo();
+                return;
+            }
+
+            // 단일 키
+            if (!e.ctrlKey && !e.altKey && !e.metaKey) {
+                if (e.key.toLowerCase() === 'e') {
+                    setTool('eraser');
+                } else if (e.key.toLowerCase() === 'b') {
+                    setTool('pen');
+                } else if (e.key.toLowerCase() === 'c') {
+                    clearCanvas();
+                }
+            }
+        });
+
+        // CANVAS_AREA 자동 계산
+        function updateAreaCoords() {
+            const rect = canvas.getBoundingClientRect();
+            // 브라우저 윈도우 스크린 좌표 기준 계산
+            const left = Math.round(window.screenX + rect.left);
+            const top = Math.round(window.screenY + (window.outerHeight - window.innerHeight) + rect.top);
+            const right = Math.round(left + rect.width);
+            const bottom = Math.round(top + rect.height);
+            const coordStr = `${left},${top},${right},${bottom}`;
+            document.getElementById('areaCoords').innerText = coordStr;
+        }
+
+        window.addEventListener('resize', updateAreaCoords);
+        window.addEventListener('scroll', updateAreaCoords);
+
+        function copyAreaCoords() {
+            const coords = document.getElementById('areaCoords').innerText;
+            navigator.clipboard.writeText(coords).then(() => {
+                showToast(`CANVAS_AREA 복사됨: ${coords}`);
+            });
+        }
+
+        // WebP 이미지 저장
+        function saveAsWebp() {
+            canvas.toBlob((blob) => {
+                if (!blob) {
+                    showToast("WebP 생성 실패");
+                    return;
+                }
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `gartic_${Date.now()}.webp`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast("WebP 형식으로 저장 완료!");
+            }, 'image/webp', 0.95);
+        }
+
+        // PNG 이미지 저장
+        function saveAsPng() {
+            const link = document.createElement('a');
+            link.download = `gartic_${Date.now()}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast("PNG 형식으로 저장 완료!");
+        }
+
+        // 초기 시작
+        initCanvas();
+        updateBrushPreview();
+    </script>
+</body>
+</html>
