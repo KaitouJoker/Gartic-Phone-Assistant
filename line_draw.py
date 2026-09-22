@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 import tkinter as tk
 from tkinter import filedialog
 import customtkinter as ctk
@@ -37,13 +40,19 @@ class LineDrawApp(ctk.CTk):
         self.precision_var = ctk.StringVar(value="100%")
         self.line_epsilon_var = ctk.StringVar(value="2.0")
         self.line_delay_var = ctk.StringVar(value="0.01")
+        self.mouse_moves_per_second_var = ctk.StringVar(value="0")
         self.mouse_duration_var = ctk.DoubleVar(value=0.0001)
+        self.denoise_filter_var = ctk.BooleanVar(value=True)
         self.contour_mode_var = ctk.StringVar(value="모든 선 찾기")
         self.contour_method_var = ctk.StringVar(value="선 압축하기")
+        self.hatch_mode_var = ctk.StringVar(value="외곽선 + 빗금")
+        self.hatch_pattern_var = ctk.StringVar(value="45° (대각선)")
+        self.hatch_spacing_var = ctk.StringVar(value="8")
+        self.hatch_adaptive_var = ctk.BooleanVar(value=True)
         
         self.num_layers_var = ctk.StringVar(value="1")
         self.layers = []
-        self.combination_method_var = ctk.StringVar(value="Union (Combine)")
+        self.combination_method_var = ctk.StringVar(value="합 연산 (Union)")
         self.layers_visible_var = ctk.BooleanVar(value=True)
 
         self.total_progress_var = ctk.DoubleVar(value=0.0)
@@ -86,7 +95,7 @@ class LineDrawApp(ctk.CTk):
         self.layer_scroll_frame.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5)
         self.layer_scroll_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(self.collapsible_layers_frame, text="조합 방식:").grid(row=2, column=0, padx=5, pady=10, sticky="w")
-        ctk.CTkOptionMenu(self.collapsible_layers_frame, variable=self.combination_method_var, values=["Union (Combine)", "Overlay"]).grid(row=2, column=1, columnspan=2, padx=5, pady=10, sticky="ew")
+        ctk.CTkOptionMenu(self.collapsible_layers_frame, variable=self.combination_method_var, values=["합 연산 (Union)", "오버레이 (Overlay)", "교집합 (Intersection)"]).grid(row=2, column=1, columnspan=2, padx=5, pady=10, sticky="ew")
         row_idx += 1
 
         general_settings_frame = ctk.CTkFrame(self); general_settings_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
@@ -102,11 +111,23 @@ class LineDrawApp(ctk.CTk):
         ctk.CTkEntry(general_settings_frame, textvariable=self.line_epsilon_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="Line Delay:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
         ctk.CTkEntry(general_settings_frame, textvariable=self.line_delay_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
+        ctk.CTkLabel(general_settings_frame, text="초당 마우스 이동 횟수:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
+        ctk.CTkEntry(general_settings_frame, textvariable=self.mouse_moves_per_second_var, placeholder_text="0 (0: 무제한)").grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="마우스 속도:").grid(row=gs_row, column=0, padx=5, pady=5, sticky="w")
         def update_speed_label(value): self.speed_value_label.configure(text=f"{value:.4f}초")
         self.speed_slider = ctk.CTkSlider(general_settings_frame, from_=0.0, to=0.02, variable=self.mouse_duration_var, command=update_speed_label)
         self.speed_slider.grid(row=gs_row, column=1, padx=5, pady=5, sticky="ew")
-        self.speed_value_label = ctk.CTkLabel(general_settings_frame, text=""); self.speed_value_label.grid(row=gs_row, column=2, padx=5, pady=5, sticky="w")
+        self.speed_value_label = ctk.CTkLabel(general_settings_frame, text=""); self.speed_value_label.grid(row=gs_row, column=2, padx=5, pady=5, sticky="w"); gs_row += 1
+        ctk.CTkLabel(general_settings_frame, text="노이즈 완화 필터:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
+        ctk.CTkCheckBox(general_settings_frame, text="활성화 (일러스트 다각형/그물망 완화)", variable=self.denoise_filter_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
+        ctk.CTkLabel(general_settings_frame, text="면 처리 모드:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
+        ctk.CTkOptionMenu(general_settings_frame, variable=self.hatch_mode_var, values=["외곽선 + 빗금", "해칭 없음", "순수 빗금", "스켈레톤화"]).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
+        ctk.CTkLabel(general_settings_frame, text="빗금 패턴:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
+        ctk.CTkOptionMenu(general_settings_frame, variable=self.hatch_pattern_var, values=["45° (대각선)", "135° (역대각선)", "0° (수평)", "90° (수직)", "Cross (격자 빗금)", "Cross-Contour (등고선)", "해칭 없음"]).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
+        ctk.CTkLabel(general_settings_frame, text="기본 빗금 간격 (px):").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
+        ctk.CTkEntry(general_settings_frame, textvariable=self.hatch_spacing_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
+        ctk.CTkLabel(general_settings_frame, text="적응형 명암 빗금:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
+        ctk.CTkCheckBox(general_settings_frame, text="활성화 (명암에 따라 간격/교차선 자동 가변)", variable=self.hatch_adaptive_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         row_idx += 1
 
         action_frame = ctk.CTkFrame(self); action_frame.grid(row=row_idx, column=0, padx=10, pady=10, sticky="ew")
@@ -135,9 +156,22 @@ class LineDrawApp(ctk.CTk):
         except ValueError: num_layers = 0; self.num_layers_var.set("0")
         for widget in self.layer_scroll_frame.winfo_children(): widget.destroy()
         old_layers, self.layers = self.layers, []
-        model_options = ["HED", "Canny", "Lineart Anime", "SoftEdge"]
+        model_options = [
+            "AniLines Detail",
+            "AniLines Basic",
+            "Lineart Anime",
+            "Anime2Sketch",
+            "AnyLine",
+            "MangaLineExtraction"
+        ]
         for i in range(num_layers):
-            vals = (old_layers[i]["enabled"].get(), old_layers[i]["model"].get(), old_layers[i]["threshold"].get()) if i < len(old_layers) else (True, "HED", "0.5")
+            if i < len(old_layers):
+                m = old_layers[i]["model"].get()
+                if m not in model_options:
+                    m = "AniLines Detail"
+                vals = (old_layers[i]["enabled"].get(), m, old_layers[i]["threshold"].get())
+            else:
+                vals = (True, "AniLines Detail", "0.5")
             layer = {"enabled": ctk.BooleanVar(value=vals[0]), "model": ctk.StringVar(value=vals[1]), "threshold": ctk.StringVar(value=vals[2])}
             self.layers.append(layer)
             ctk.CTkCheckBox(self.layer_scroll_frame, text=f"L{i+1}", variable=layer["enabled"]).grid(row=i, column=0, padx=5, pady=5)
@@ -173,11 +207,23 @@ class LineDrawApp(ctk.CTk):
             if not pipeline:
                 self.logger.error("활성화된 모델 레이어가 없습니다."); self.after(0, self.reset_start_button); return
 
+            self.uses_lineart_model = any(fn.is_lineart_model(layer["model"]) for layer in pipeline)
+
+            try:
+                hatch_spacing = int(self.hatch_spacing_var.get())
+            except (ValueError, TypeError):
+                hatch_spacing = 8
+
             self.preview_image = fn.generate_preview_image(
                 image_path=self.image_path_var.get(), pipeline=pipeline, combination_method=self.combination_method_var.get(),
                 canvas_coords=tuple(map(int, self.canvas_area_var.get().split(","))), precision=int(self.precision_var.get().replace("%", "")), 
                 logger=self.logger, line_epsilon=float(self.line_epsilon_var.get()),
-                contour_mode=self.contour_mode_var.get(), contour_method=self.contour_method_var.get()
+                contour_mode=self.contour_mode_var.get(), contour_method=self.contour_method_var.get(),
+                use_denoise_filter=self.denoise_filter_var.get(),
+                hatch_mode=self.hatch_mode_var.get(),
+                hatch_pattern=self.hatch_pattern_var.get(),
+                hatch_spacing=hatch_spacing,
+                hatch_adaptive=self.hatch_adaptive_var.get()
             )
             if self.preview_image is None:
                 self.logger.error("이미지 처리 실패. 그릴 내용이 없거나 오류 발생."); self.after(0, self.reset_start_button); return
@@ -186,9 +232,22 @@ class LineDrawApp(ctk.CTk):
             self.logger.error(f"이미지 처리 중 예외 발생: {e}"); self.after(0, self.reset_start_button)
 
     def show_editor_window(self):
-        editor = fn.EditorWindow(root=self, initial_image=self.preview_image, line_epsilon=float(self.line_epsilon_var.get()),
+        try:
+            line_delay = float(self.line_delay_var.get())
+        except (ValueError, TypeError):
+            line_delay = 0.01
+        try:
+            moves_per_sec = float(self.mouse_moves_per_second_var.get())
+        except (ValueError, TypeError):
+            moves_per_sec = 0.0
+
+        editor = fn.EditorWindow(
+            root=self, initial_image=self.preview_image, line_epsilon=float(self.line_epsilon_var.get()),
             contour_mode=self.contour_mode_var.get(), contour_method=self.contour_method_var.get(),
-            start_callback=self.finalize_and_start_drawing, cancel_callback=self.cancel_drawing)
+            uses_lineart_model=getattr(self, 'uses_lineart_model', False),
+            start_callback=self.finalize_and_start_drawing, cancel_callback=self.cancel_drawing,
+            line_delay=line_delay, mouse_duration=self.mouse_duration_var.get(), moves_per_second=moves_per_sec
+        )
         self.wait_window(editor)
         # 편집기 창이 닫힌 후 항상 버튼을 리셋
         self.reset_start_button()
@@ -202,8 +261,12 @@ class LineDrawApp(ctk.CTk):
         global drawing_thread
         self.logger.info("자동 그리기 (라인 모드)을 시작합니다."); self.attributes("-topmost", True)
         stop_drawing_flag.clear(); self.stop_button.configure(state="normal")
+        try:
+            moves_per_sec = float(self.mouse_moves_per_second_var.get())
+        except (ValueError, TypeError):
+            moves_per_sec = 0.0
         drawer = fn.AutoDrawerLine(self.drawing_plan, self.canvas_area_var.get(), self.update_progress, stop_drawing_flag, self.logger,
-            float(self.line_delay_var.get()), self.mouse_duration_var.get())
+            float(self.line_delay_var.get()), self.mouse_duration_var.get(), moves_per_second=moves_per_sec)
         drawing_thread = threading.Thread(target=drawer.run, daemon=True); drawing_thread.start()
         self.check_thread_status()
     
@@ -226,15 +289,40 @@ class LineDrawApp(ctk.CTk):
         self.precision_var.set(settings.get("PRECISION", "80%"))
         self.line_epsilon_var.set(settings.get("LINE_EPSILON", "1.5"))
         self.line_delay_var.set(settings.get("LINE_DELAY", "0.01"))
+        self.mouse_moves_per_second_var.set(settings.get("MOUSE_MOVES_PER_SECOND", "0"))
         self.mouse_duration_var.set(float(settings.get("MOUSE_DURATION", "0.005")))
+        self.denoise_filter_var.set(settings.get("DENOISE_FILTER", "true").lower() == "true")
         self.contour_mode_var.set(settings.get("CONTOUR_MODE", "외곽선만 찾기"))
         self.contour_method_var.set(settings.get("CONTOUR_METHOD", "선 압축하기"))
-        self.combination_method_var.set(settings.get("COMBINATION_METHOD", "Overlay"))
+        loaded_comb = settings.get("COMBINATION_METHOD", "합 연산 (Union)")
+        if loaded_comb in ("Union (Combine)", "합 연산", "합 연산 (Union)"):
+            loaded_comb = "합 연산 (Union)"
+        elif loaded_comb in ("Overlay", "오버레이", "오버레이 (Overlay)"):
+            loaded_comb = "오버레이 (Overlay)"
+        elif loaded_comb in ("Intersection", "교집합", "교집합 (Intersection)"):
+            loaded_comb = "교집합 (Intersection)"
+        else:
+            loaded_comb = "합 연산 (Union)"
+        self.combination_method_var.set(loaded_comb)
+        self.hatch_mode_var.set(settings.get("HATCH_MODE", "외곽선 + 빗금"))
+        self.hatch_pattern_var.set(settings.get("HATCH_PATTERN", "45° (대각선)"))
+        self.hatch_spacing_var.set(settings.get("HATCH_SPACING", "8"))
+        self.hatch_adaptive_var.set(settings.get("HATCH_ADAPTIVE", "true").lower() == "true")
         self.num_layers_var.set(settings.get("NUM_LAYERS", "1"))
         self.update_layer_widgets()
         for i in range(len(self.layers)):
             self.layers[i]["enabled"].set(settings.get(f"L{i+1}_ENABLED", "true" if i==0 else "false").lower() == "true")
-            self.layers[i]["model"].set(settings.get(f"L{i+1}_MODEL", "HED"))
+            loaded_model = settings.get(f"L{i+1}_MODEL", "AniLines Detail")
+            if loaded_model not in [
+                "AniLines Detail",
+                "AniLines Basic",
+                "Lineart Anime",
+                "Anime2Sketch",
+                "AnyLine",
+                "MangaLineExtraction"
+            ]:
+                loaded_model = "AniLines Detail"
+            self.layers[i]["model"].set(loaded_model)
             self.layers[i]["threshold"].set(settings.get(f"L{i+1}_THRESHOLD", "0.5"))
 
     def cancel_drawing(self): self.reset_progress(); self.logger.info("그리기 작업이 취소되었습니다.")
