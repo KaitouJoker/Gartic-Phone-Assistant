@@ -243,10 +243,15 @@ class LineDrawApp(ctk.CTk):
             if preview_result is None or (isinstance(preview_result, tuple) and preview_result[0] is None):
                 self.logger.error("이미지 처리 실패. 그릴 내용이 없거나 오류 발생."); self.after(0, self.reset_start_button); return
             if isinstance(preview_result, tuple):
-                self.preview_image, self.initial_plan = preview_result
+                if len(preview_result) == 3:
+                    self.preview_image, self.initial_plan, self.outline_count = preview_result
+                else:
+                    self.preview_image, self.initial_plan = preview_result
+                    self.outline_count = None
             else:
                 self.preview_image = preview_result
                 self.initial_plan = None
+                self.outline_count = None
             self.logger.info("이미지 처리 완료. 편집 창을 표시합니다."); self.after(0, self.show_editor_window)
         except Exception as e:
             self.logger.error(f"이미지 처리 중 예외 발생: {e}"); self.after(0, self.reset_start_button)
@@ -267,14 +272,16 @@ class LineDrawApp(ctk.CTk):
             uses_lineart_model=getattr(self, 'uses_lineart_model', False),
             start_callback=self.finalize_and_start_drawing, cancel_callback=self.cancel_drawing,
             line_delay=line_delay, mouse_duration=self.mouse_duration_var.get(), moves_per_second=moves_per_sec,
-            initial_plan=getattr(self, 'initial_plan', None)
+            initial_plan=getattr(self, 'initial_plan', None),
+            outline_count=getattr(self, 'outline_count', None)
         )
         self.wait_window(editor)
         # 편집기 창이 닫힌 후 항상 버튼을 리셋
         self.reset_start_button()
 
-    def finalize_and_start_drawing(self, final_plan):
+    def finalize_and_start_drawing(self, final_plan, outline_count=None):
         self.drawing_plan = final_plan
+        self.drawing_outline_count = outline_count
         if not self.drawing_plan: self.logger.error("편집 후 그릴 선이 없습니다."); return
         self.confirm_start_drawing()
 
@@ -286,8 +293,11 @@ class LineDrawApp(ctk.CTk):
             moves_per_sec = float(self.mouse_moves_per_second_var.get())
         except (ValueError, TypeError):
             moves_per_sec = 0.0
-        drawer = fn.AutoDrawerLine(self.drawing_plan, self.canvas_area_var.get(), self.update_progress, stop_drawing_flag, self.logger,
-            float(self.line_delay_var.get()), self.mouse_duration_var.get(), moves_per_second=moves_per_sec)
+        drawer = fn.AutoDrawerLine(
+            self.drawing_plan, self.canvas_area_var.get(), self.update_progress, stop_drawing_flag, self.logger,
+            float(self.line_delay_var.get()), self.mouse_duration_var.get(), moves_per_second=moves_per_sec,
+            outline_count=getattr(self, 'drawing_outline_count', None)
+        )
         drawing_thread = threading.Thread(target=drawer.run, daemon=True); drawing_thread.start()
         self.check_thread_status()
     

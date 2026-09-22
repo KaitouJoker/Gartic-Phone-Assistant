@@ -345,8 +345,71 @@ def extract_paths_from_skeleton(skeleton):
         paths.append(full_path)
     return paths
 
-def vectorize_and_sort_paths(binary_image, line_epsilon, min_points=3, filter_small_loops=False, scale_factor=1.0, offset=(0, 0)):
+def sort_hatching_tr_to_bl(vectorized_paths, canvas_w, canvas_h, window_size=5):
+    """
+    빗금(해칭) 선분들을 캔버스 기준 우측 상단(Top-Right)에서 시작하여
+    좌측 하단(Bottom-Left) 방향으로 순차적으로 그려지도록 정렬합니다.
+    슬라이딩 윈도우 기반 지그재그(Serpentine) 연결을 통해 마우스 점프 거리를 최소화합니다.
+    """
+    if not vectorized_paths:
+        return []
+    if len(vectorized_paths) == 1:
+        p = list(vectorized_paths[0])
+        # 우측 상단 (canvas_w, 0)과 더 가까운 끝점을 시작점으로 설정
+        d_s = (p[0][0] - canvas_w)**2 + (p[0][1] - 0)**2
+        d_e = (p[-1][0] - canvas_w)**2 + (p[-1][1] - 0)**2
+        if d_e < d_s:
+            p.reverse()
+        return [p]
+
+    cw = max(1.0, float(canvas_w))
+    ch = max(1.0, float(canvas_h))
+
+    def get_proj(p):
+        pts = np.array(p, dtype=np.float32)
+        # -x/W + y/H: 우측 상단(W, 0)은 -1.0(최소), 좌측 하단(0, H)은 +1.0(최대)
+        return float(np.mean(-pts[:, 0] / cw + pts[:, 1] / ch))
+
+    # 전체 선분을 우측 상단 ➔ 좌측 하단 투영 순으로 1차 정렬
+    sorted_candidates = sorted(vectorized_paths, key=get_proj)
+
+    # 1. 첫 번째 선분: 우측 상단 (canvas_w, 0)에 가장 가까운 선분 및 시작점 선택
+    p0 = list(sorted_candidates.pop(0))
+    d0_s = (p0[0][0] - canvas_w)**2 + (p0[0][1] - 0)**2
+    d0_e = (p0[-1][0] - canvas_w)**2 + (p0[-1][1] - 0)**2
+    if d0_e < d0_s:
+        p0.reverse()
+    result = [p0]
+
+    # 2. 전방 슬라이딩 윈도우 내에서 이전 선분 끝점과 가장 가까운 선분을 선택하여 지그재그 연결
+    while sorted_candidates:
+        last_pt = result[-1][-1]
+        w = min(window_size, len(sorted_candidates))
+        best_idx = 0
+        best_dist = float('inf')
+        best_rev = False
+
+        for i in range(w):
+            cand = sorted_candidates[i]
+            d_s = (cand[0][0] - last_pt[0])**2 + (cand[0][1] - last_pt[1])**2
+            d_e = (cand[-1][0] - last_pt[0])**2 + (cand[-1][1] - last_pt[1])**2
+            if d_s < best_dist:
+                best_dist, best_idx, best_rev = d_s, i, False
+            if d_e < best_dist:
+                best_dist, best_idx, best_rev = d_e, i, True
+
+        chosen = list(sorted_candidates.pop(best_idx))
+        if best_rev:
+            chosen.reverse()
+        result.append(chosen)
+
+    return result
+
+def vectorize_and_sort_paths(binary_image, line_epsilon, min_points=3, filter_small_loops=False, scale_factor=1.0, offset=(0, 0), is_hatch=False, canvas_size=None):
     from skimage.morphology import skeletonize
+    if binary_image is None or np.sum(binary_image > 0) == 0:
+        return []
+        
     # 입력 마스크를 항상 1픽셀 중심선으로 확실하게 뼈대화하여 두꺼운 선에 의한 지그재그 경로 및 과도한 분할 방지
     skeleton = skeletonize(binary_image > 0)
     raw_paths = extract_paths_from_skeleton(skeleton)
@@ -388,8 +451,12 @@ def vectorize_and_sort_paths(binary_image, line_epsilon, min_points=3, filter_sm
             
     if not vectorized_paths:
         return []
-        
-    # 가장 긴 라인 순서대로 그리도록 길이 기준 내림차순 정렬
+
+    # 빗금(해칭)인 경우: 캔버스 우측 상단 ➔ 좌측 하단 대각선 스윕 정렬 수행
+    if is_hatch and canvas_size is not None:
+        return sort_hatching_tr_to_bl(vectorized_paths, canvas_w=canvas_size[0], canvas_h=canvas_size[1])
+
+    # 외곽선인 경우: 가장 긴 라인 순서대로 그리도록 길이 기준 내림차순 정렬 후 인접 선 연결
     vectorized_paths.sort(key=calculate_segment_length, reverse=True)
     
     def distance(p1, p2): return (p1[0] - p2[0])**2 + (p1[1] - p2[1])**2
@@ -537,31 +604,57 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
                     # "합 연산 (Union)", "Union (Combine)", "오버레이 (Overlay)", "Overlay" 등 모든 병합 방식은 다중 레이어를 합성
                     combined_edges = cv2.bitwise_or(combined_edges, edges)
                 
-    # 면(채색 영역 및 굵은 선)에 대해 설정된 모드(외곽선+빗금, 스켈레톤, 빗금만) 및 패턴 적용
-    logger.info(f"면 처리 모드 적용 중: {hatch_mode} (패턴: {hatch_pattern}, 간격: {hatch_spacing}px, 적응형: {'On' if hatch_adaptive else 'Off'})...")
-    combined_edges = process_surface_with_hatching(
+    # 면(채색 영역 및 굵은 선)에 대해 설정된 모드(외곽선+빗금, 스켈레톤, 빗금만) 및 패턴 적용 (외곽선과 빗금 분리 연산)
+    logger.info(f"면 처리 모드 적용 중 (외곽선/빗금 분리 연산): {hatch_mode} (패턴: {hatch_pattern}, 간격: {hatch_spacing}px, 적응형: {'On' if hatch_adaptive else 'Off'})...")
+    outline_canvas, hatch_canvas = process_surface_with_hatching(
         combined_edges,
         orig_image=image_for_analysis,
         mode=hatch_mode,
         pattern=hatch_pattern,
         spacing=int(hatch_spacing),
-        adaptive=bool(hatch_adaptive)
+        adaptive=bool(hatch_adaptive),
+        return_separated=True
     )
         
     scale_factor = target_w / analysis_w if analysis_w > 0 else 1.0
     x_offset, y_offset = (canvas_width - target_w) // 2, (canvas_height - target_h) // 2
 
-    # DFS를 사용한 진짜 벡터화 및 TSP를 이용한 최단 이동거리 정렬 수행 (필터 켜짐 시 미세 루프 제거)
-    # 캔버스 실제 픽셀 좌표계로 먼저 변환한 후 approxPolyDP 근사를 수행하여 line_epsilon이 화면 픽셀 기준으로 1:1 정확히 계산됨
-    vectorized_plan = vectorize_and_sort_paths(
-        combined_edges, 
+    # 1단계: 외곽선(Outline) 경로 벡터화 및 정렬 (형태 및 뼈대선 완벽 보존)
+    logger.info("1단계: 외곽선(Outline) 경로 벡터화 및 최적화 중...")
+    outline_plan = vectorize_and_sort_paths(
+        outline_canvas, 
         line_epsilon=line_epsilon, 
         min_points=3, 
         filter_small_loops=use_denoise_filter,
         scale_factor=scale_factor,
-        offset=(x_offset, y_offset)
+        offset=(x_offset, y_offset),
+        is_hatch=False
     )
-    logger.info(f"벡터화 및 TSP 정렬 완료: {len(vectorized_plan)}개의 최적화된 경로 생성.")
+    outline_count = len(outline_plan)
+    logger.info(f"외곽선 경로 생성 완료: {outline_count}개")
+
+    # 2단계: 빗금(Hatch) 경로 벡터화 및 캔버스 우측 상단 ➔ 좌측 하단 스윕 정렬
+    if hatch_canvas is not None and np.sum(hatch_canvas > 0) > 0:
+        logger.info("2단계: 빗금/해칭(Hatch) 경로 벡터화 및 우측 상단➔좌측 하단 정렬 중...")
+        hatch_plan = vectorize_and_sort_paths(
+            hatch_canvas,
+            line_epsilon=line_epsilon,
+            min_points=3,
+            filter_small_loops=use_denoise_filter,
+            scale_factor=scale_factor,
+            offset=(x_offset, y_offset),
+            is_hatch=True,
+            canvas_size=(canvas_width, canvas_height)
+        )
+        hatch_count = len(hatch_plan)
+        logger.info(f"빗금 경로 생성 완료: {hatch_count}개 (우측 상단 ➔ 좌측 하단 스윕 정렬 완료)")
+    else:
+        hatch_plan = []
+        hatch_count = 0
+
+    # 외곽선이 100% 모두 완성된 뒤에 빗금이 그려지도록 엄격하게 결합
+    vectorized_plan = outline_plan + hatch_plan
+    logger.info(f"전체 벡터화 및 분리 정렬 완료: 총 {len(vectorized_plan)}개 경로 (외곽선 {outline_count}개 + 빗금 {hatch_count}개)")
 
     # 선화 내용물을 캔버스 좌/우 및 위/아래 중앙으로 완벽 정렬
     final_plan = align_plan_to_center(vectorized_plan, canvas_width, canvas_height, logger)
@@ -571,10 +664,10 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
     preview_image = render_plan_to_image(final_plan, canvas_width, canvas_height, opacity=line_opacity, line_width=1)
     
     # 캔버스 크기(canvas_width, canvas_height)를 그대로 유지하여 편집기 및 실제 그리기 좌표계와 일치
-    return preview_image, final_plan
+    return preview_image, final_plan, outline_count
 
 class AutoDrawerLine:
-    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.001, mouse_duration=0, moves_per_second=0):
+    def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.001, mouse_duration=0, moves_per_second=0, outline_count=None):
         self.canvas_area = tuple(map(int, canvas_area_str.split(',')))
         canvas_width = self.canvas_area[2] - self.canvas_area[0]
         canvas_height = self.canvas_area[3] - self.canvas_area[1]
@@ -585,13 +678,29 @@ class AutoDrawerLine:
         self.update_callback, self.stop_event, self.logger, self.line_delay, self.mouse_duration = \
             update_cb, stop_event, logger, line_delay, mouse_duration
         self.moves_per_second = float(moves_per_second) if moves_per_second else 0.0
+        self.outline_count = outline_count
+
     def run(self):
         pyautogui.FAILSAFE = False
         original_pause = pyautogui.PAUSE
         pyautogui.PAUSE = 0  # pyautogui 내부 0.1초 강제 대기 오버라이드
-        rate_limit_info = f"{self.moves_per_second:g}회/초" if self.moves_per_second > 0 else "무제한"
-        self.logger.info(f"자동 그리기 시작... (내부 지연 오버라이드 적용, 초당 이동 제한: {rate_limit_info})")
         total_lines = len(self.line_drawing_plan)
+        if total_lines == 0:
+            self.logger.info("그릴 선이 없습니다.")
+            self.update_callback("완료", 100, "완료", 100)
+            return
+
+        outline_count = self.outline_count if (self.outline_count is not None and 0 <= self.outline_count <= total_lines) else total_lines
+        hatch_count = total_lines - outline_count
+        has_two_phases = (outline_count > 0 and hatch_count > 0)
+
+        rate_limit_info = f"{self.moves_per_second:g}회/초" if self.moves_per_second > 0 else "무제한"
+        if has_two_phases:
+            self.logger.info(f"자동 그리기 시작... [1단계: 외곽선 {outline_count:,}개 ➔ 2단계: 빗금 {hatch_count:,}개] (초당 이동 제한: {rate_limit_info})")
+        else:
+            self.logger.info(f"자동 그리기 시작... [총 {total_lines:,}개 경로] (초당 이동 제한: {rate_limit_info})")
+
+        has_logged_hatch_phase = False
         last_update_time = time.time()
 
         try:
@@ -602,12 +711,25 @@ class AutoDrawerLine:
                 if self.stop_event.is_set(): break
                 if len(line_segment) < 2: continue
 
+                # 2단계 빗금 시작 시점 감지 및 로거 안내
+                if has_two_phases and i >= outline_count and not has_logged_hatch_phase:
+                    self.logger.info(">>> 1단계 외곽선 그리기 완료! 2단계 빗금(해칭) 그리기를 시작합니다. (우측 상단 ➔ 좌측 하단 스윕)")
+                    has_logged_hatch_phase = True
+
                 # GUI 업데이트 최적화: 0.05초마다 또는 마지막에만 업데이트
                 current_time = time.time()
                 if (current_time - last_update_time > 0.05) or (i == total_lines - 1):
-                    current_line_num = i + 1; progress_text = f"{current_line_num}/{total_lines}"
+                    current_line_num = i + 1
                     line_progress = (current_line_num / total_lines) * 100
-                    self.update_callback(f"선 {progress_text}", line_progress, progress_text, line_progress)
+                    if has_two_phases:
+                        if i < outline_count:
+                            phase_text = f"1단계 외곽선 {i + 1}/{outline_count}"
+                        else:
+                            phase_text = f"2단계 빗금 {i - outline_count + 1}/{hatch_count}"
+                        progress_text = f"{phase_text} (전체 {current_line_num}/{total_lines})"
+                    else:
+                        progress_text = f"선 {current_line_num}/{total_lines}"
+                    self.update_callback(progress_text, line_progress, progress_text, line_progress)
                     last_update_time = current_time
 
                 first_rel = line_segment[0]
@@ -665,7 +787,7 @@ def format_duration(seconds):
     return f"{minutes}분 {rem_seconds}초"
 
 class EditorWindow(Toplevel):
-    def __init__(self, root, initial_image, line_epsilon, contour_mode, contour_method, start_callback, cancel_callback, uses_lineart_model=False, line_delay=0.01, mouse_duration=0.0, moves_per_second=0.0, initial_plan=None):
+    def __init__(self, root, initial_image, line_epsilon, contour_mode, contour_method, start_callback, cancel_callback, uses_lineart_model=False, line_delay=0.01, mouse_duration=0.0, moves_per_second=0.0, initial_plan=None, outline_count=None):
         super().__init__(root)
         self.title("편집기"); self.start_callback, self.cancel_callback = start_callback, cancel_callback
         self.line_epsilon, self.contour_mode, self.contour_method = line_epsilon, contour_mode, contour_method
@@ -674,6 +796,7 @@ class EditorWindow(Toplevel):
         self.mouse_duration = mouse_duration
         self.moves_per_second = moves_per_second
         self.initial_plan = initial_plan
+        self.outline_count = outline_count
         self.is_modified = False
         self.image = initial_image.copy(); self.img_w, self.img_h = self.image.size
         
@@ -719,18 +842,27 @@ class EditorWindow(Toplevel):
         try:
             if not self.is_modified and self.initial_plan is not None:
                 plan = self.initial_plan
+                cur_outline_cnt = self.outline_count
             else:
                 plan = generate_plan_from_image(
                     self.image, logging.getLogger(), self.line_epsilon, 
                     self.contour_mode, self.contour_method, uses_lineart_model=self.uses_lineart_model
                 )
+                cur_outline_cnt = None
             est_seconds, total_lines, total_points = calculate_plan_time_estimate(
                 plan, self.line_delay, self.mouse_duration, self.moves_per_second
             )
             time_str = format_duration(est_seconds)
             rate_info = f"({self.moves_per_second:g}회/초 기준)" if self.moves_per_second > 0 else "(무제한 속도 기준)"
+            
+            if cur_outline_cnt is not None and 0 < cur_outline_cnt < total_lines:
+                hatch_cnt = total_lines - cur_outline_cnt
+                counts_info = f"총 선: {total_lines:,}개 (외곽선 {cur_outline_cnt:,} + 빗금 {hatch_cnt:,})"
+            else:
+                counts_info = f"총 선: {total_lines:,}개"
+
             self.time_info_label.config(
-                text=f"⏱️ 그리기 완료 예상 시간: 약 {time_str} {rate_info}  |  총 선: {total_lines:,}개  |  포인트: {total_points:,}개",
+                text=f"⏱️ 그리기 완료 예상 시간: 약 {time_str} {rate_info}  |  {counts_info}  |  포인트: {total_points:,}개",
                 fg="#38bdf8"
             )
         except Exception as e:
@@ -811,8 +943,14 @@ class EditorWindow(Toplevel):
         # 편집기에서 수정한 내용이 없다면 초기 미리보기 계산 계획을 100% 그대로 전달 (재벡터화/선 손실 방지)
         if not self.is_modified and self.initial_plan is not None:
             final_plan = self.initial_plan
+            outline_count = self.outline_count
         else:
             final_plan = generate_plan_from_image(self.image, logging.getLogger(), self.line_epsilon, self.contour_mode, self.contour_method, uses_lineart_model=self.uses_lineart_model)
-        self.start_callback(final_plan); self.destroy()
+            outline_count = None
+        try:
+            self.start_callback(final_plan, outline_count=outline_count)
+        except TypeError:
+            self.start_callback(final_plan)
+        self.destroy()
         
     def on_cancel(self): self.cancel_callback(); self.destroy()

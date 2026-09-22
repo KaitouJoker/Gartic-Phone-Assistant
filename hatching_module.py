@@ -173,44 +173,54 @@ def process_surface_with_hatching(
     mode: str = "외곽선 + 빗금",
     pattern: str = "45° (대각선)",
     spacing: int = 8,
-    adaptive: bool = True
-) -> np.ndarray:
+    adaptive: bool = True,
+    return_separated: bool = False
+):
     """
     이진 마스크를 사용자가 지정한 빗금 모드 및 패턴에 따라 처리하여 최종 1픽셀 라인아트를 반환합니다.
     
     Args:
         binary_mask: uint8 1채널 마스크 (255=선/면, 0=배경)
         orig_image: PIL Image 원본 (적응형 명암 분석에 사용)
-        mode: "외곽선 + 빗금", "스켈레톤화", "순수 빗금"
+        mode: "외곽선 + 빗금", "스켈레톤화", "순수 빗금", "해칭 없음"
         pattern: "45° (대각선)", "135° (역대각선)", "0° (수평)", "90° (수직)", "Cross (격자 빗금)", "Cross-Contour (등고선)"
         spacing: 빗금 간격 (px)
         adaptive: True이면 원본 이미지 명암에 따라 간격 자동 조절
+        return_separated: True이면 (outline_canvas, hatch_canvas) 튜플을 분리 반환
         
     Returns:
-        np.ndarray: uint8 1채널 엣지 맵 (255=그릴 선, 0=배경)
+        np.ndarray 또는 (np.ndarray, np.ndarray): 엣지 맵 (255=그릴 선, 0=배경)
     """
     if binary_mask is None or np.sum(binary_mask > 0) == 0:
+        if return_separated:
+            empty = np.zeros_like(binary_mask) if binary_mask is not None else np.zeros((1, 1), dtype=np.uint8)
+            return empty, empty
         return binary_mask
 
-    # 1. 스켈레톤화 모드인 경우: 기존 방식대로 1픽셀 중심선만 추출
+    h, w = binary_mask.shape
+    outline_canvas = np.zeros((h, w), dtype=np.uint8)
+    hatch_canvas = np.zeros((h, w), dtype=np.uint8)
+
+    # 1. 스켈레톤화 모드인 경우: 기존 방식대로 1픽셀 중심선만 추출 (외곽선 캔버스에 배치)
     if mode == "스켈레톤화":
         skeleton = skeletonize(binary_mask > 0)
-        return (skeleton * 255).astype(np.uint8)
-
-    h, w = binary_mask.shape
+        outline_canvas = (skeleton * 255).astype(np.uint8)
+        if return_separated:
+            return outline_canvas, hatch_canvas
+        return outline_canvas
 
     # 2. 외곽선(Outline) 추출
-    outline_canvas = np.zeros((h, w), dtype=np.uint8)
     if mode in ("외곽선 + 빗금", "해칭 없음", "외곽선만", "외곽선만 (해칭 없음)", "해칭 없음 (외곽선만)"):
         contours, _ = cv2.findContours(binary_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         cv2.drawContours(outline_canvas, contours, -1, 255, 1)
 
-    # 3. 해칭 없음인 경우: 외곽선만 즉시 반환
+    # 3. 해칭 없음인 경우: 외곽선만 반환
     if mode in ("해칭 없음", "외곽선만", "외곽선만 (해칭 없음)", "해칭 없음 (외곽선만)") or pattern in ("해칭 없음", "없음"):
+        if return_separated:
+            return outline_canvas, hatch_canvas
         return outline_canvas
 
     # 4. 빗금(Hatching) 생성
-    hatch_canvas = np.zeros((h, w), dtype=np.uint8)
     orig_gray = None
     if orig_image is not None:
         orig_gray = np.array(orig_image.convert("L"))
@@ -223,7 +233,13 @@ def process_surface_with_hatching(
         else:
             hatch_canvas = generate_parallel_hatch_mask(binary_mask, spacing=spacing, angle_type=pattern)
 
-    # 5. 모드에 따라 결합
+    # 5. 분리 반환 모드인 경우 튜플 즉시 반환
+    if return_separated:
+        if mode == "순수 빗금":
+            return np.zeros((h, w), dtype=np.uint8), hatch_canvas
+        return outline_canvas, hatch_canvas
+
+    # 6. 모드에 따라 결합 반환
     if mode == "외곽선 + 빗금":
         result = cv2.bitwise_or(outline_canvas, hatch_canvas)
     elif mode == "순수 빗금":
