@@ -1,0 +1,82 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Model weights and checkpoints (prevent huge files from bloating git or exceeding GitHub 100MB limit)
+*.pth
+*.pt
+*.bin
+*.onnx
+*.ckpt
+*.safetensors
+weights/
+*/weights/*
+AniLines/weights/*
+anime2sketch_repo/weights/*
+
+# Debug & Temporary Images
+debug_*.png
+debug_*.jpg
+debug_*.webp
+debug_*.bmp
+comp_*.png
+comp_*.jpg
+comparison_*.png
+comparison_*.jpg
+crop_*.png
+crop_*.jpg
+
+# Large assets / demos in submodules
+AniLines/assets/
+anime2sketch_repo/demos/
+anime2sketch_repo/figures/
+anime2sketch_repo/test_samples/
+
+# Log files
+*.log
+logs/
+*.log.*
+
+# IDE / Editor configuration
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System Files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+*.tmp

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>크롬 마우스 포인터 인식률(Hz) 측정기</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e2e;
+            color: #cdd6f4;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { margin-bottom: 5px; color: #89b4fa; }
+        p { margin-top: 0; color: #a6adc8; font-size: 14px; }
+        .stats-container {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background-color: #313244;
+            border-radius: 12px;
+            padding: 15px 25px;
+            text-align: center;
+            min-width: 130px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #a6e3a1;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #bac2de;
+            margin-top: 5px;
+        }
+        #drawCanvas {
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            cursor: crosshair;
+        }
+        .btn-reset {
+            margin-top: 15px;
+            padding: 8px 18px;
+            background-color: #f38ba8;
+            color: #11111b;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .btn-reset:hover { background-color: #eba0ac; }
+    </style>
+</head>
+<body>
+    <h1>🖱️ 크롬 마우스 포인터 인식 횟수 측정기</h1>
+    <p>아래 캔버스 위에서 자동 그리기 또는 마우스를 빠르게 움직여 크롬의 최대 수신 빈도(Hz)를 확인하세요.</p>
+
+    <div class="stats-container">
+        <div class="stat-card">
+            <div class="stat-value" id="currentHz">0</div>
+            <div class="stat-label">현재 수신율 (Hz / 초당 횟수)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="maxHz" style="color: #f9e2af;">0</div>
+            <div class="stat-label">최대 측정치 (Peak Hz)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="avgInterval" style="color: #89dceb;">0.00</div>
+            <div class="stat-label">평균 이벤트 간격 (ms)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="coalescedHz" style="color: #cba6f7;">0</div>
+            <div class="stat-label">하부 통합 이벤트 (Coalesced)</div>
+        </div>
+    </div>
+
+    <canvas id="drawCanvas" width="900" height="500"></canvas>
+    <button class="btn-reset" onclick="resetStats()">통계 및 캔버스 초기화</button>
+
+    <script>
+        const canvas = document.getElementById('drawCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#000000';
+
+        let isDrawing = false;
+        let lastX = 0, lastY = 0;
+
+        let eventTimestamps = [];
+        let coalescedCounts = [];
+        let maxRecordedHz = 0;
+
+        canvas.addEventListener('pointerdown', (e) => {
+            isDrawing = true;
+            lastX = e.offsetX;
+            lastY = e.offsetY;
+            recordEvent(e);
+        });
+
+        canvas.addEventListener('pointermove', (e) => {
+            recordEvent(e);
+            if (!isDrawing) return;
+
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(e.offsetX, e.offsetY);
+            ctx.stroke();
+
+            lastX = e.offsetX;
+            lastY = e.offsetY;
+        });
+
+        window.addEventListener('pointerup', () => { isDrawing = false; });
+
+        function recordEvent(e) {
+            const now = performance.now();
+            eventTimestamps.push(now);
+
+            // 크롬 PointerEvent 표준: 서브 프레임에서 수신된 실제 이벤트 개수
+            if (e.getCoalescedEvents) {
+                const subEvents = e.getCoalescedEvents();
+                coalescedCounts.push(subEvents.length || 1);
+            } else {
+                coalescedCounts.push(1);
+            }
+        }
+
+        // 100ms마다 최근 1초간의 통계 갱신
+        setInterval(() => {
+            const now = performance.now();
+            const oneSecAgo = now - 1000;
+
+            // 1초 이전의 데이터 제거
+            while (eventTimestamps.length > 0 && eventTimestamps[0] < oneSecAgo) {
+                eventTimestamps.shift();
+                coalescedCounts.shift();
+            }
+
+            const currentHz = eventTimestamps.length;
+            if (currentHz > maxRecordedHz) {
+                maxRecordedHz = currentHz;
+            }
+
+            let totalCoalesced = 0;
+            for (let c of coalescedCounts) totalCoalesced += c;
+
+            let avgInterval = 0;
+            if (eventTimestamps.length > 1) {
+                const timeSpan = eventTimestamps[eventTimestamps.length - 1] - eventTimestamps[0];
+                avgInterval = (timeSpan / (eventTimestamps.length - 1)).toFixed(2);
+            }
+
+            document.getElementById('currentHz').innerText = currentHz;
+            document.getElementById('maxHz').innerText = maxRecordedHz;
+            document.getElementById('avgInterval').innerText = avgInterval;
+            document.getElementById('coalescedHz').innerText = totalCoalesced;
+        }, 100);
+
+        function resetStats() {
+            eventTimestamps = [];
+            coalescedCounts = [];
+            maxRecordedHz = 0;
+            document.getElementById('currentHz').innerText = 0;
+            document.getElementById('maxHz').innerText = 0;
+            document.getElementById('avgInterval').innerText = "0.00";
+            document.getElementById('coalescedHz').innerText = 0;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+    </script>
+</body>
+</html>
