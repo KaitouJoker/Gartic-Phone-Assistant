@@ -16,7 +16,6 @@
             --accent-purple: #8b5cf6;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
-            --safe-top: 10px; /* 브라우저 최상단 X버튼 트리거 방지 세이프 마진 */
         }
 
         * {
@@ -31,36 +30,8 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background-color: #0b0f19;
+            background-color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        }
-
-        /* -------------------------------------------------------------
-           상단 세이프존 가드 바 (Chrome/Edge 상단 'X' 종료 팝업 방어선)
-           ------------------------------------------------------------- */
-        #topSafeBar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: var(--safe-top);
-            background: linear-gradient(90deg, #111827 0%, #1e1b4b 50%, #111827 100%);
-            border-bottom: 1px solid rgba(99, 102, 241, 0.4);
-            z-index: 50;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 8.5px;
-            font-weight: 700;
-            color: #818cf8;
-            letter-spacing: 0.5px;
-            user-select: none;
-            box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
-            transition: height 0.15s ease, opacity 0.2s ease;
-        }
-
-        #topSafeBar.hidden-bar {
-            display: none !important;
         }
 
         /* -------------------------------------------------------------
@@ -70,13 +41,12 @@
            ------------------------------------------------------------- */
         #garticCanvas, #draftCanvas {
             position: fixed;
-            top: var(--safe-top);
+            top: 0;
             left: 0;
             width: 100vw;
-            height: calc(100vh - var(--safe-top));
+            height: 100vh;
             display: block;
             cursor: crosshair;
-            transition: top 0.15s ease, height 0.15s ease;
         }
 
         #garticCanvas {
@@ -95,10 +65,10 @@
            ------------------------------------------------------------- */
         .tools-panel {
             position: fixed;
-            top: calc(var(--safe-top) + 12px);
+            top: 16px;
             left: 16px;
             width: 310px;
-            max-height: calc(100vh - var(--safe-top) - 24px);
+            max-height: calc(100vh - 32px);
             background: var(--panel-bg);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
@@ -112,7 +82,7 @@
             color: var(--text-main);
             z-index: 100;
             overflow-y: auto;
-            transition: opacity 0.2s ease, transform 0.2s ease, top 0.15s ease;
+            transition: opacity 0.2s ease, transform 0.2s ease;
         }
 
         .tools-panel::-webkit-scrollbar {
@@ -412,12 +382,12 @@
            ------------------------------------------------------------- */
         .floating-controls {
             position: fixed;
-            top: calc(var(--safe-top) + 10px);
+            top: 14px;
             right: 14px;
             display: flex;
             gap: 8px;
             z-index: 100;
-            transition: opacity 0.2s ease, top 0.15s ease;
+            transition: opacity 0.2s ease;
         }
 
         .float-btn {
@@ -468,7 +438,7 @@
 
         .hover-zone-topright {
             position: fixed;
-            top: var(--safe-top);
+            top: 0;
             right: 0;
             width: 160px;
             height: 60px;
@@ -515,9 +485,6 @@
 </head>
 <body>
 
-    <!-- 0. 상단 세이프존 가드 바: 브라우저 자체의 '전체화면 종료(X)' 버튼 트리거를 방어 -->
-    <div id="topSafeBar" title="브라우저 자체의 '전체화면 종료(X)' 팝업을 차단하는 상단 보호 구역입니다.">🛡️ 상단 세이프존 (10px) - 브라우저 X버튼 차단 중</div>
-
     <!-- 1. 메인 캔버스: 영구 저장용 흰색 배경 캔버스 -->
     <canvas id="garticCanvas"></canvas>
 
@@ -553,28 +520,6 @@
             <button class="btn btn-purple" id="btnToggleFS" onclick="toggleFullscreen()" title="모니터 전체화면으로 전환 (단축키: F11)">
                 🖥️ 모니터 전체화면 (F11)
             </button>
-        </div>
-
-        <!-- 상단 세이프존 (X버튼 방어) 설정 -->
-        <div class="tool-section">
-            <div class="tool-title">
-                <span>상단 세이프존 (X버튼 방지)</span>
-                <span class="tool-val" id="safeVal">10px (추천)</span>
-            </div>
-            <div class="btn-group">
-                <button class="btn active" id="safe10" onclick="setSafeMargin(10)" title="브라우저 상단 X버튼 발생을 원천 차단 (추천)">
-                    🛡️ 10px (추천)
-                </button>
-                <button class="btn" id="safe15" onclick="setSafeMargin(15)" title="더 넓은 여백으로 확실한 방어">
-                    15px
-                </button>
-                <button class="btn" id="safe0" onclick="setSafeMargin(0)" title="0px 완전 전체화면 (run_canvas_kiosk.bat 키오스크 전용)">
-                    0px (키오스크)
-                </button>
-            </div>
-            <div style="font-size: 10.5px; color: #94a3b8; line-height: 1.35; margin-top: 2px;">
-                💡 일반 브라우저는 최상단(Y=0) 접근 시 Chrome/Edge의 <b>'전체화면 종료(X)'</b> 버튼이 내려옵니다. 10px 세이프존이 이 버튼의 발생을 원천 차단합니다.
-            </div>
         </div>
 
         <!-- 도구 선택 (펜 / 지우개) -->
@@ -733,7 +678,6 @@
         let lastX = 0;
         let lastY = 0;
         let isUIHidden = false;
-        let safeTopMargin = 10; // 기본값 10px: 브라우저 상단 'X' 전체화면 종료 팝업 원천 방어
 
         // 히스토리 관리 (GPU 가속 스냅샷 방식)
         let totalStrokes = 0;
@@ -747,47 +691,11 @@
         let lastSecondTime = performance.now();
 
         // -------------------------------------------------------------
-        // 상단 세이프존 변경 (Chrome/Edge 상단 X버튼 발생 방지)
-        // -------------------------------------------------------------
-        function setSafeMargin(margin, silent = false) {
-            safeTopMargin = parseInt(margin);
-            if (isNaN(safeTopMargin) || safeTopMargin < 0) safeTopMargin = 0;
-            document.documentElement.style.setProperty('--safe-top', `${safeTopMargin}px`);
-
-            const bar = document.getElementById('topSafeBar');
-            if (bar) {
-                if (safeTopMargin === 0) {
-                    bar.classList.add('hidden-bar');
-                } else {
-                    bar.classList.remove('hidden-bar');
-                    bar.innerText = `🛡️ 상단 세이프존 (${safeTopMargin}px) - 브라우저 X버튼 차단 중`;
-                }
-            }
-
-            const valEl = document.getElementById('safeVal');
-            if (valEl) {
-                valEl.innerText = safeTopMargin === 0 ? "0px (키오스크)" : `${safeTopMargin}px (${safeTopMargin === 10 ? '추천' : '안전'})`;
-            }
-
-            [0, 10, 15].forEach(s => {
-                const btn = document.getElementById(`safe${s}`);
-                if (btn) btn.classList.toggle('active', s === safeTopMargin);
-            });
-
-            if (!silent) {
-                handleResize(true);
-                showToast(safeTopMargin === 0 
-                    ? "세이프존 0px (키오스크/앱 전용 모드 - 일반 브라우저에서는 X버튼 주의)" 
-                    : `🛡️ 상단 세이프존 ${safeTopMargin}px 적용 (브라우저 X버튼 차단)`);
-            }
-        }
-
-        // -------------------------------------------------------------
         // 캔버스 초기화: 메인 및 드래프트 캔버스를 화면 전체로 설정
         // -------------------------------------------------------------
         function initCanvas() {
             const w = window.innerWidth;
-            const h = Math.max(10, window.innerHeight - safeTopMargin);
+            const h = window.innerHeight;
 
             mainCanvas.width = w;
             mainCanvas.height = h;
@@ -828,10 +736,10 @@
         }
 
         // 화면 크기 변경 시 캔버스도 화면 전체를 항상 유지 (기존 그림 보존)
-        function handleResize(force = false) {
+        function handleResize() {
             const newW = window.innerWidth;
-            const newH = Math.max(10, window.innerHeight - safeTopMargin);
-            if (!force && mainCanvas.width === newW && mainCanvas.height === newH) return;
+            const newH = window.innerHeight;
+            if (mainCanvas.width === newW && mainCanvas.height === newH) return;
 
             // 기존 그림 임시 보관
             const temp = document.createElement('canvas');
@@ -867,22 +775,21 @@
             updateAreaCoords();
         }
 
-        window.addEventListener('resize', () => handleResize(false));
+        window.addEventListener('resize', handleResize);
 
         // 해상도 텍스트 표시 갱신
         function updateDimensionDisplay() {
             const isFS = !!document.fullscreenElement;
             const resStr = `${mainCanvas.width} × ${mainCanvas.height}`;
-            const safeNote = safeTopMargin > 0 ? ` (상단 ${safeTopMargin}px 세이프존)` : ` (0px 전체)`;
             
             const resValEl = document.getElementById('resVal');
             if (resValEl) {
-                resValEl.innerText = isFS ? `${resStr}${safeNote}` : `${resStr} (창)`;
+                resValEl.innerText = isFS ? `${resStr} (모니터 전체)` : `${resStr} (창 전체)`;
             }
 
             const modeInfoEl = document.getElementById('modeInfo');
             if (modeInfoEl) {
-                modeInfoEl.innerText = isFS ? `🖥️ 모니터 전체화면 (${resStr}${safeNote})` : `창 전체화면 (${resStr})`;
+                modeInfoEl.innerText = isFS ? `🖥️ 모니터 전체화면 (${resStr})` : `창 전체화면 (${resStr})`;
             }
 
             const badgeFS = document.getElementById('badgeFS');
@@ -921,7 +828,7 @@
                 if (fsText) fsText.innerText = '창 모드 복귀 (F11)';
                 if (btnFloatFS) btnFloatFS.classList.add('active-fs');
                 if (btnToggleFS) btnToggleFS.innerText = '🗗 창 모드로 복귀 (F11)';
-                showToast(`🖥️ 모니터 전체화면 활성화 (${window.innerWidth}×${window.innerHeight}) - X버튼 방어 가드 작동 중`);
+                showToast(`🖥️ 모니터 전체화면 활성화 (${window.innerWidth} × ${window.innerHeight})`);
             } else {
                 if (fsIcon) fsIcon.innerText = '🖥️';
                 if (fsText) fsText.innerText = '모니터 전체화면 (F11)';
@@ -1303,7 +1210,7 @@
             }
         });
 
-        // CANVAS_AREA 자동 계산 (상단 세이프존 반영으로 매크로 실행 시 브라우저 X버튼 트리거 원천 방지)
+        // CANVAS_AREA 자동 계산
         function updateAreaCoords() {
             const isFS = !!document.fullscreenElement;
             const screenLeft = (window.screenLeft !== undefined) ? window.screenLeft : (window.screenX || 0);
@@ -1312,15 +1219,15 @@
             let left, top, right, bottom;
             if (isFS) {
                 left = Math.round(screenLeft);
-                top = Math.round(screenTop + safeTopMargin);
+                top = Math.round(screenTop);
                 right = Math.round(left + window.innerWidth);
-                bottom = Math.round(screenTop + window.innerHeight);
+                bottom = Math.round(top + window.innerHeight);
             } else {
                 const chromeHeight = Math.max(0, window.outerHeight - window.innerHeight);
                 left = Math.round(screenLeft);
-                top = Math.round(screenTop + chromeHeight + safeTopMargin);
+                top = Math.round(screenTop + chromeHeight);
                 right = Math.round(left + window.innerWidth);
-                bottom = Math.round(screenTop + window.outerHeight);
+                bottom = Math.round(top + window.innerHeight);
             }
 
             const coordStr = `${left},${top},${right},${bottom}`;
@@ -1374,7 +1281,6 @@
         }
 
         // 시작
-        setSafeMargin(10, true);
         initCanvas();
         updateBrushPreview();
     </script>
