@@ -44,6 +44,7 @@ class LineDrawApp(ctk.CTk):
         self.image_path_var = ctk.StringVar()
         self.precision_var = ctk.StringVar(value="100%")
         self.line_epsilon_var = ctk.StringVar(value="2.0")
+        self.line_opacity_var = ctk.StringVar(value="100%")
         self.line_delay_var = ctk.StringVar(value="0.01")
         self.mouse_moves_per_second_var = ctk.StringVar(value="0")
         self.mouse_duration_var = ctk.DoubleVar(value=0.0001)
@@ -114,6 +115,8 @@ class LineDrawApp(ctk.CTk):
         ctk.CTkOptionMenu(general_settings_frame, variable=self.contour_method_var, values=["선 압축하기", "모든 점 저장하기"]).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=5, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="Line Epsilon (px):").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
         ctk.CTkEntry(general_settings_frame, textvariable=self.line_epsilon_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
+        ctk.CTkLabel(general_settings_frame, text="선 투명도 (불투명도):").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
+        ctk.CTkOptionMenu(general_settings_frame, variable=self.line_opacity_var, values=["100%", "90%", "80%", "75%", "70%", "60%", "50%", "40%", "30%", "25%", "20%", "10%"]).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="Line Delay:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
         ctk.CTkEntry(general_settings_frame, textvariable=self.line_delay_var).grid(row=gs_row, column=1, columnspan=2, padx=5, pady=2, sticky="ew"); gs_row += 1
         ctk.CTkLabel(general_settings_frame, text="초당 마우스 이동 횟수:").grid(row=gs_row, column=0, padx=5, pady=2, sticky="w")
@@ -218,6 +221,12 @@ class LineDrawApp(ctk.CTk):
             except (ValueError, TypeError):
                 hatch_spacing = 8
 
+            try:
+                op_str = self.line_opacity_var.get().replace("%", "").strip()
+                line_opacity = float(op_str) / 100.0
+            except (ValueError, TypeError):
+                line_opacity = 1.0
+
             preview_result = fn.generate_preview_image(
                 image_path=self.image_path_var.get(), pipeline=pipeline, combination_method=self.combination_method_var.get(),
                 canvas_coords=tuple(map(int, self.canvas_area_var.get().split(","))), precision=int(self.precision_var.get().replace("%", "")), 
@@ -227,7 +236,8 @@ class LineDrawApp(ctk.CTk):
                 hatch_mode=self.hatch_mode_var.get(),
                 hatch_pattern=self.hatch_pattern_var.get(),
                 hatch_spacing=hatch_spacing,
-                hatch_adaptive=self.hatch_adaptive_var.get()
+                hatch_adaptive=self.hatch_adaptive_var.get(),
+                line_opacity=line_opacity
             )
             if preview_result is None or (isinstance(preview_result, tuple) and preview_result[0] is None):
                 self.logger.error("이미지 처리 실패. 그릴 내용이 없거나 오류 발생."); self.after(0, self.reset_start_button); return
@@ -298,6 +308,7 @@ class LineDrawApp(ctk.CTk):
         self.image_path_var.set(settings.get("IMAGE_PATH", ""))
         self.precision_var.set(settings.get("PRECISION", "80%"))
         self.line_epsilon_var.set(settings.get("LINE_EPSILON", "1.5"))
+        self.line_opacity_var.set(settings.get("LINE_OPACITY", "100%"))
         self.line_delay_var.set(settings.get("LINE_DELAY", "0.01"))
         self.mouse_moves_per_second_var.set(settings.get("MOUSE_MOVES_PER_SECOND", "0"))
         self.mouse_duration_var.set(float(settings.get("MOUSE_DURATION", "0.005")))

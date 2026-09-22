@@ -106,7 +106,10 @@ def apply_adaptive_hatching_mask(mask: np.ndarray, orig_gray: np.ndarray, base_s
             while d < max_d:
                 ring = (dist >= d).astype(np.uint8) * 255
                 cnts, _ = cv2.findContours(ring, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-                cv2.drawContours(canvas, cnts, -1, 255, 1)
+                temp = np.zeros((h, w), dtype=np.uint8)
+                cv2.drawContours(temp, cnts, -1, 255, 1)
+                # 밝은 하이라이트(darkness < 50) 영역은 깔끔하게 비우고, 음영 영역(darkness >= 50)에 등고선 곡선 배치
+                canvas[(temp == 255) & (darkness >= 50)] = 255
                 d += step
         # 짙은 영역(darkness >= 170)에는 보조 대각 빗금 추가하여 깊은 명암 보강
         deep_dark_mask = (darkness >= 170) & (mask > 0)

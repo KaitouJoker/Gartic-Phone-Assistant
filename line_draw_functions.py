@@ -152,6 +152,7 @@ def save_settings(app):
         "PRECISION": app.precision_var.get(),
         "LINE_EPSILON": app.line_epsilon_var.get(),
         "LINE_DELAY": app.line_delay_var.get(),
+        "LINE_OPACITY": getattr(app, "line_opacity_var", None).get() if hasattr(app, "line_opacity_var") else "100%",
         "MOUSE_DURATION": app.mouse_duration_var.get(),
         "MOUSE_MOVES_PER_SECOND": app.mouse_moves_per_second_var.get(),
         "DENOISE_FILTER": app.denoise_filter_var.get(),
@@ -450,8 +451,55 @@ def generate_plan_from_image(final_image, logger, line_epsilon, contour_mode, co
     
     return line_drawing_plan
 
-def generate_preview_image(image_path, pipeline, combination_method, canvas_coords, precision, logger, line_epsilon, contour_mode, contour_method, use_denoise_filter=True, hatch_mode="외곽선 + 빗금", hatch_pattern="45° (대각선)", hatch_spacing=8, hatch_adaptive=True):
-    logger.info(f"이미지 처리 시작 (조합 방식: {combination_method}, 노이즈 완화 필터: {'On' if use_denoise_filter else 'Off'})...")
+def render_plan_to_image(line_drawing_plan, canvas_width, canvas_height, opacity=1.0, line_width=1):
+    """
+    선화 계획(line_drawing_plan)을 주어진 투명도(opacity: 0.0~1.0)와 선 굵기로 캔버스에 렌더링.
+    각 스트로크가 교차/중첩되는 영역은 알파 블렌딩되어 더욱 짙게 합성(Composite)됨.
+    """
+    canvas_w = int(canvas_width)
+    canvas_h = int(canvas_height)
+    try:
+        opacity = float(opacity)
+    except (ValueError, TypeError):
+        opacity = 1.0
+    line_width = max(1, int(line_width))
+
+    if opacity >= 0.999:
+        preview_image = Image.new("RGB", (canvas_w, canvas_h), (255, 255, 255))
+        preview_draw = ImageDraw.Draw(preview_image)
+        for segment in line_drawing_plan:
+            if len(segment) >= 2:
+                preview_draw.line(segment, fill=(0, 0, 0), width=line_width)
+            elif len(segment) == 1:
+                preview_draw.point(segment[0], fill=(0, 0, 0))
+        return preview_image
+
+    # opacity < 1.0 : 각 스트로크 단위 알파 블렌딩 누적 합성 (갈틱폰 캔버스 투명도 100% 모사)
+    canvas = np.full((canvas_h, canvas_w), 255.0, dtype=np.float32)
+    factor = max(0.0, min(1.0, 1.0 - opacity))
+
+    for seg in line_drawing_plan:
+        if len(seg) < 2:
+            continue
+        pts = np.array(seg, dtype=np.int32)
+        pad = max(2, line_width + 1)
+        min_x, max_x = max(0, pts[:, 0].min() - pad), min(canvas_w, pts[:, 0].max() + pad + 1)
+        min_y, max_y = max(0, pts[:, 1].min() - pad), min(canvas_h, pts[:, 1].max() + pad + 1)
+        bw, bh = max_x - min_x, max_y - min_y
+        if bw <= 0 or bh <= 0:
+            continue
+
+        local_mask = np.zeros((bh, bw), dtype=np.uint8)
+        local_pts = pts - [min_x, min_y]
+        cv2.polylines(local_mask, [local_pts], False, 1, thickness=line_width)
+        active = (local_mask == 1)
+        canvas[min_y:max_y, min_x:max_x][active] *= factor
+
+    preview_uint8 = np.clip(canvas, 0, 255).astype(np.uint8)
+    return Image.fromarray(preview_uint8).convert("RGB")
+
+def generate_preview_image(image_path, pipeline, combination_method, canvas_coords, precision, logger, line_epsilon, contour_mode, contour_method, use_denoise_filter=True, hatch_mode="외곽선 + 빗금", hatch_pattern="45° (대각선)", hatch_spacing=8, hatch_adaptive=True, line_opacity=1.0):
+    logger.info(f"이미지 처리 시작 (조합 방식: {combination_method}, 노이즈 완화 필터: {'On' if use_denoise_filter else 'Off'}, 선 불투명도: {int(line_opacity*100)}%)...")
     if not image_path: return None, None
     user_image, canvas_width, canvas_height = Image.open(image_path).convert("RGB"), canvas_coords[2]-canvas_coords[0], canvas_coords[3]-canvas_coords[1]
     img_width, img_height = user_image.size
@@ -519,13 +567,8 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
     final_plan = align_plan_to_center(vectorized_plan, canvas_width, canvas_height, logger)
     final_plan = [[(int(round(x)), int(round(y))) for x, y in seg] for seg in final_plan]
 
-    preview_image = Image.new("RGB", (canvas_width, canvas_height), (255, 255, 255))
-    preview_draw = ImageDraw.Draw(preview_image)
-    for segment in final_plan:
-        if len(segment) >= 2:
-            preview_draw.line(segment, fill=(0, 0, 0), width=1)
-        elif len(segment) == 1:
-            preview_draw.point(segment[0], fill=(0, 0, 0))
+    # 설정된 선 투명도(line_opacity)를 반영하여 스트로크 중첩 영역이 짙어지는 알파 합성 렌더링 수행
+    preview_image = render_plan_to_image(final_plan, canvas_width, canvas_height, opacity=line_opacity, line_width=1)
     
     # 캔버스 크기(canvas_width, canvas_height)를 그대로 유지하여 편집기 및 실제 그리기 좌표계와 일치
     return preview_image, final_plan
