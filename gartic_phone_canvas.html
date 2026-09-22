@@ -217,11 +217,54 @@
             color: #ffffff;
         }
 
-        /* 슬라이더 컨트롤 */
+        /* 슬라이더 및 넘버 박스 컨트롤 */
         .slider-container {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+        }
+
+        .num-box-wrapper {
+            display: flex;
+            align-items: center;
+            background: #111425;
+            border: 1px solid var(--panel-border);
+            border-radius: 6px;
+            padding: 2px 6px;
+            flex-shrink: 0;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .num-box-wrapper:focus-within {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+        }
+
+        .num-box-wrapper input[type="number"] {
+            width: 44px;
+            background: transparent;
+            border: none;
+            color: var(--accent-blue);
+            font-weight: 800;
+            font-size: 13px;
+            text-align: right;
+            outline: none;
+            -moz-appearance: textfield;
+            padding: 2px 1px;
+        }
+
+        .num-box-wrapper input[type="number"]::-webkit-inner-spin-button,
+        .num-box-wrapper input[type="number"]::-webkit-outer-spin-button {
+            opacity: 0.7;
+            cursor: pointer;
+        }
+
+        .num-box-wrapper .unit {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            margin-left: 3px;
+            user-select: none;
         }
 
         input[type="range"] {
@@ -500,6 +543,10 @@
             </div>
             <div class="slider-container">
                 <input type="range" id="sizeSlider" min="1" max="80" value="4" oninput="updateSize(this.value)">
+                <div class="num-box-wrapper" title="사용자 지정 페인팅 굵기 (1~300 px)">
+                    <input type="number" id="sizeInput" min="1" max="300" value="4" oninput="updateSize(this.value)">
+                    <span class="unit">px</span>
+                </div>
             </div>
             <div class="btn-group">
                 <button class="btn" onclick="updateSize(1)">1px</button>
@@ -518,6 +565,10 @@
             </div>
             <div class="slider-container">
                 <input type="range" id="opacitySlider" min="5" max="100" value="100" oninput="updateOpacity(this.value)">
+                <div class="num-box-wrapper" title="사용자 지정 불투명도 (1~100 %)">
+                    <input type="number" id="opacityInput" min="1" max="100" value="100" oninput="updateOpacity(this.value)">
+                    <span class="unit">%</span>
+                </div>
             </div>
             <div class="btn-group">
                 <button class="btn" onclick="updateOpacity(25)">25%</button>
@@ -664,6 +715,8 @@
             redoStack = [];
             saveState();
 
+            updateSize(currentSize);
+            updateOpacity(Math.round(currentOpacity * 100));
             updateDimensionDisplay();
             setTimeout(updateAreaCoords, 100);
         }
@@ -840,11 +893,23 @@
             updateBrushPreview();
         }
 
-        // 굵기 변경
+        // 굵기 변경 (슬라이더, 넘버 박스, 프리셋 양방향 동기화)
         function updateSize(size) {
-            currentSize = parseInt(size);
-            document.getElementById('sizeSlider').value = currentSize;
-            document.getElementById('sizeVal').innerText = `${currentSize} px`;
+            let val = parseInt(size);
+            if (isNaN(val) || val < 1) val = 1;
+            if (val > 300) val = 300;
+            currentSize = val;
+
+            const slider = document.getElementById('sizeSlider');
+            if (slider) slider.value = Math.min(currentSize, 80);
+
+            const input = document.getElementById('sizeInput');
+            if (input && document.activeElement !== input) {
+                input.value = currentSize;
+            }
+
+            const valEl = document.getElementById('sizeVal');
+            if (valEl) valEl.innerText = `${currentSize} px`;
 
             [1, 4, 10, 24, 48].forEach(s => {
                 const el = document.getElementById(`size${s}`);
@@ -854,23 +919,33 @@
             updateBrushPreview();
         }
 
-        // 투명도 변경
+        // 투명도 변경 (슬라이더, 넘버 박스, 프리셋 양방향 동기화)
         function updateOpacity(val) {
-            currentOpacity = parseInt(val) / 100.0;
-            document.getElementById('opacitySlider').value = val;
+            let num = parseInt(val);
+            if (isNaN(num) || num < 1) num = 1;
+            if (num > 100) num = 100;
+            currentOpacity = num / 100.0;
+
+            const slider = document.getElementById('opacitySlider');
+            if (slider) slider.value = num;
+
+            const input = document.getElementById('opacityInput');
+            if (input && document.activeElement !== input) {
+                input.value = num;
+            }
 
             const opValEl = document.getElementById('opacityVal');
             if (opValEl) {
                 if (currentTool === 'eraser') {
                     opValEl.innerText = '100% (지우개 고정)';
                 } else {
-                    opValEl.innerText = `${val}%`;
+                    opValEl.innerText = `${num}%`;
                 }
             }
 
             [25, 50, 75, 100].forEach(op => {
                 const el = document.getElementById(`op${op}`);
-                if (el) el.classList.toggle('active', op === parseInt(val));
+                if (el) el.classList.toggle('active', op === num);
             });
 
             // 드래프트 캔버스에 투명도 동기화
