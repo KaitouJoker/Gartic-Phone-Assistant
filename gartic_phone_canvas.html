@@ -3,18 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>갈틱폰(Gartic Phone) 가상 캔버스 테스트 환경</title>
+    <title>갈틱폰(Gartic Phone) 가상 캔버스 환경</title>
     <style>
         :root {
-            --bg-color: #15172b;
-            --panel-bg: #202444;
-            --panel-border: #2d335f;
+            --panel-bg: rgba(28, 32, 60, 0.92);
+            --panel-border: rgba(99, 102, 241, 0.25);
             --accent-blue: #3b82f6;
             --accent-hover: #60a5fa;
             --accent-coral: #ef4444;
             --accent-coral-hover: #f87171;
             --accent-green: #10b981;
-            --accent-yellow: #f59e0b;
+            --accent-purple: #8b5cf6;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
         }
@@ -25,255 +24,99 @@
             -webkit-user-select: none;
         }
 
-        body {
+        html, body {
             margin: 0;
-            padding: 16px;
-            background-color: var(--bg-color);
-            color: var(--text-main);
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            overflow-x: hidden;
-            transition: padding 0.2s ease, background-color 0.2s ease;
         }
 
         /* -------------------------------------------------------------
-           1. 전체화면 모드 (모니터 영역 전체를 캔버스로 채우기)
+           기본 캔버스: 화면 전체(100vw x 100vh)를 기본으로 가득 채움
            ------------------------------------------------------------- */
-        body.fullscreen-mode {
-            padding: 0 !important;
-            margin: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            overflow: hidden !important;
-            background-color: #0b0d19 !important;
-        }
-
-        body.fullscreen-mode header {
-            display: none !important;
-        }
-
-        body.fullscreen-mode .workspace {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            max-width: none !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            display: block !important;
+        #garticCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: block;
+            background-color: #ffffff;
+            cursor: crosshair;
             z-index: 1;
         }
 
-        body.fullscreen-mode .canvas-wrapper {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            display: block !important;
-            gap: 0 !important;
-        }
-
-        body.fullscreen-mode #garticCanvas {
-            position: fixed !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100vw !important;
-            height: 100vh !important;
-            max-width: none !important;
-            max-height: none !important;
-            border-radius: 0 !important;
-            border: none !important;
-            box-shadow: none !important;
-            margin: 0 !important;
-            z-index: 10 !important;
-            cursor: crosshair;
-        }
-
-        body.fullscreen-mode .tools-panel {
+        /* -------------------------------------------------------------
+           UI 오버레이: 캔버스 위에 플로팅되는 툴바 및 컨트롤 패널
+           ------------------------------------------------------------- */
+        .tools-panel {
             position: fixed;
             top: 16px;
             left: 16px;
-            z-index: 1000;
+            width: 310px;
             max-height: calc(100vh - 32px);
-            background: rgba(32, 36, 68, 0.94);
-            backdrop-filter: blur(14px);
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 13px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+            color: var(--text-main);
+            z-index: 100;
+            overflow-y: auto;
             transition: opacity 0.2s ease, transform 0.2s ease;
         }
 
-        body.fullscreen-mode .info-bar {
-            position: fixed;
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            width: auto;
-            min-width: 620px;
-            max-width: 90vw;
-            background: rgba(32, 36, 68, 0.94);
-            backdrop-filter: blur(14px);
-            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+        .tools-panel::-webkit-scrollbar {
+            width: 5px;
+        }
+        .tools-panel::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
         }
 
-        /* -------------------------------------------------------------
-           2. UI 숨김 모드 (단축키: Tab 또는 H)
-           ------------------------------------------------------------- */
-        body.ui-hidden header,
-        body.ui-hidden .tools-panel,
-        body.ui-hidden .info-bar {
-            display: none !important;
-        }
-
-        /* UI 숨김 시 우측 상단 플로팅 버튼을 평소에는 숨기고 호버 시에만 표시 */
-        body.ui-hidden .floating-controls {
-            opacity: 0.15;
-            pointer-events: none;
-            transition: opacity 0.25s ease;
-        }
-
-        body.ui-hidden .floating-controls:hover,
-        body.ui-hidden .hover-zone-active .floating-controls {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        /* 우측 상단 감지 영역 (마우스를 올리면 플로팅 버튼이 보이도록) */
-        .hover-zone-topright {
-            position: fixed;
-            top: 0;
-            right: 0;
-            width: 140px;
-            height: 60px;
-            z-index: 9998;
-            display: none;
-        }
-
-        body.ui-hidden .hover-zone-topright {
-            display: block;
-        }
-
-        /* 우측 상단 플로팅 컨트롤 */
-        .floating-controls {
-            position: fixed;
-            top: 12px;
-            right: 12px;
-            display: flex;
-            gap: 8px;
-            z-index: 9999;
-            opacity: 0.85;
-            transition: opacity 0.2s ease;
-        }
-
-        .floating-controls:hover {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .float-btn {
-            background-color: rgba(32, 36, 68, 0.9);
-            backdrop-filter: blur(10px);
-            color: #e2e8f0;
-            border: 1px solid var(--panel-border);
-            border-radius: 8px;
-            padding: 7px 13px;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+        .panel-header {
             display: flex;
             align-items: center;
-            gap: 6px;
-            transition: all 0.15s ease;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 8px;
         }
 
-        .float-btn:hover {
-            background-color: var(--accent-blue);
-            color: #ffffff;
-            border-color: #93c5fd;
-            transform: translateY(-1px);
-        }
-
-        .float-btn.active-fs {
-            background-color: #2563eb;
-            color: #ffffff;
-            border-color: #60a5fa;
-            box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
-        }
-
-        header {
-            text-align: center;
-            margin-bottom: 12px;
-        }
-
-        header h1 {
+        .panel-header h2 {
             margin: 0;
-            font-size: 24px;
+            font-size: 15px;
             font-weight: 800;
             color: #60a5fa;
             display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 8px;
+            gap: 6px;
         }
 
-        header p {
-            margin: 4px 0 0;
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
-        /* 메인 작업 영역 레이아웃 (창 모드 기본) */
-        .workspace {
-            display: flex;
-            gap: 16px;
-            align-items: flex-start;
-            max-width: 1400px;
-            width: 100%;
-            justify-content: center;
-            transition: all 0.2s ease;
-        }
-
-        /* 툴바 패널 */
-        .tools-panel {
-            background-color: var(--panel-bg);
-            border: 2px solid var(--panel-border);
-            border-radius: 16px;
-            padding: 16px;
-            width: 320px;
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            max-height: 92vh;
-            overflow-y: auto;
-            flex-shrink: 0;
-        }
-
-        .tools-panel::-webkit-scrollbar {
-            width: 6px;
-        }
-        .tools-panel::-webkit-scrollbar-thumb {
-            background: #3b447a;
-            border-radius: 3px;
+        .badge-fs {
+            background-color: #1e3a8a;
+            color: #bfdbfe;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 700;
         }
 
         .tool-section {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 5px;
         }
 
         .tool-title {
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 700;
             color: var(--text-muted);
             text-transform: uppercase;
@@ -286,22 +129,22 @@
         .tool-val {
             color: var(--accent-blue);
             font-weight: 800;
-            font-size: 13px;
+            font-size: 12px;
         }
 
         /* 버튼 및 프리셋 */
         .btn-group {
             display: flex;
-            gap: 6px;
+            gap: 5px;
             flex-wrap: wrap;
         }
 
         .btn {
-            background-color: #2b325c;
+            background-color: rgba(43, 50, 92, 0.85);
             color: var(--text-main);
-            border: 2px solid transparent;
-            border-radius: 8px;
-            padding: 7px 10px;
+            border: 1px solid transparent;
+            border-radius: 7px;
+            padding: 6px 9px;
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
@@ -309,14 +152,15 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 5px;
             flex: 1;
             text-align: center;
             white-space: nowrap;
         }
 
         .btn:hover {
-            background-color: #3b447a;
+            background-color: rgba(59, 68, 122, 0.95);
+            border-color: rgba(255, 255, 255, 0.2);
         }
 
         .btn.active {
@@ -366,27 +210,27 @@
         .slider-container {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         input[type="range"] {
             flex: 1;
             accent-color: var(--accent-blue);
-            height: 6px;
+            height: 5px;
             background: #111425;
             border-radius: 4px;
             outline: none;
             cursor: pointer;
         }
 
-        /* 브러시 미리보기 원 */
+        /* 브러시 미리보기 박스 */
         .brush-preview-box {
             display: flex;
             align-items: center;
             justify-content: center;
-            height: 50px;
-            background: #111425;
-            border-radius: 10px;
+            height: 44px;
+            background: rgba(17, 20, 37, 0.8);
+            border-radius: 8px;
             border: 1px dashed var(--panel-border);
             overflow: hidden;
         }
@@ -426,7 +270,7 @@
 
         .custom-color-picker {
             width: 100%;
-            height: 30px;
+            height: 28px;
             padding: 2px 4px;
             background-color: #111425;
             border: 1px solid var(--panel-border);
@@ -434,40 +278,29 @@
             cursor: pointer;
         }
 
-        /* 캔버스 래퍼 (창 모드 기본) */
-        .canvas-wrapper {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            flex: 1;
-            min-width: 0;
-        }
-
-        #garticCanvas {
-            background-color: #ffffff;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
-            cursor: crosshair;
-            display: block;
-            max-width: 100%;
-            height: auto;
-        }
-
-        /* 하단 정보 바 */
+        /* -------------------------------------------------------------
+           하단 정보 바 (플로팅 HUD)
+           ------------------------------------------------------------- */
         .info-bar {
-            display: flex;
-            gap: 12px;
-            background-color: var(--panel-bg);
+            position: fixed;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border: 1px solid var(--panel-border);
             border-radius: 10px;
-            padding: 8px 14px;
+            padding: 7px 16px;
             font-size: 12px;
             color: var(--text-muted);
-            width: 100%;
-            justify-content: space-between;
+            display: flex;
+            gap: 14px;
             align-items: center;
-            flex-wrap: wrap;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            white-space: nowrap;
+            transition: opacity 0.2s ease;
         }
 
         .info-item b {
@@ -483,27 +316,108 @@
             font-size: 11px;
             cursor: pointer;
             margin-left: 4px;
-            font-weight: 600;
+            font-weight: 700;
         }
         .copy-btn:hover {
             background-color: #38bdf8;
             color: #0f172a;
         }
 
+        /* -------------------------------------------------------------
+           우측 상단 플로팅 컨트롤 (UI 토글 및 전체화면)
+           ------------------------------------------------------------- */
+        .floating-controls {
+            position: fixed;
+            top: 14px;
+            right: 14px;
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+            transition: opacity 0.2s ease;
+        }
+
+        .float-btn {
+            background-color: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            color: #e2e8f0;
+            border: 1px solid var(--panel-border);
+            border-radius: 8px;
+            padding: 7px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+
+        .float-btn:hover {
+            background-color: var(--accent-blue);
+            color: #ffffff;
+            border-color: #93c5fd;
+            transform: translateY(-1px);
+        }
+
+        .float-btn.active-fs {
+            background-color: #2563eb;
+            color: #ffffff;
+            border-color: #60a5fa;
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
+        }
+
+        /* -------------------------------------------------------------
+           UI 숨김 모드 (Tab / H): 오버레이를 전부 감추어 순수 100% 캔버스화
+           ------------------------------------------------------------- */
+        body.ui-hidden .tools-panel,
+        body.ui-hidden .info-bar {
+            display: none !important;
+        }
+
+        /* UI 숨김 시 우측 상단 컨트롤을 기본적으로 투명화하여 매크로 그리기 방해 차단 */
+        body.ui-hidden .floating-controls {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+
+        /* 우측 상단 호버 존: 마우스를 가져가면 살짝 나타나 클릭 가능 */
+        .hover-zone-topright {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 160px;
+            height: 60px;
+            z-index: 99;
+            display: none;
+        }
+
+        body.ui-hidden .hover-zone-topright {
+            display: block;
+        }
+
+        body.ui-hidden .hover-zone-topright:hover + .floating-controls,
+        body.ui-hidden .floating-controls:hover {
+            opacity: 0.95;
+            pointer-events: auto;
+        }
+
         /* 토스트 알림 메시지 */
         .toast {
             position: fixed;
-            bottom: 24px;
+            bottom: 28px;
             left: 50%;
             transform: translate(-50%, 15px);
-            background-color: rgba(15, 23, 42, 0.95);
+            background-color: rgba(15, 23, 42, 0.96);
             color: #38bdf8;
             border: 1px solid #0284c7;
             padding: 10px 22px;
             border-radius: 8px;
             font-size: 13px;
             font-weight: 700;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            box-shadow: 0 8px 28px rgba(0,0,0,0.7);
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.25s ease, transform 0.25s ease;
@@ -519,186 +433,170 @@
 </head>
 <body>
 
-    <!-- 우측 상단 마우스 감지 영역 (UI 숨김 상태에서도 마우스를 올리면 플로팅 버튼이 보이도록) -->
+    <!-- 1. 메인 캔버스: 화면 전체를 100% 기본으로 차지 -->
+    <canvas id="garticCanvas"></canvas>
+
+    <!-- UI 숨김 상태에서 마우스로 우측 상단 접근 시 복원 버튼을 표시해주는 감지 구역 -->
     <div class="hover-zone-topright" id="hoverZone"></div>
 
-    <!-- 우측 상단 플로팅 컨트롤 (UI 토글 및 모니터 전체화면) -->
+    <!-- 2. 우측 상단 플로팅 컨트롤 (UI 토글 및 모니터 전체화면) -->
     <div class="floating-controls" id="floatingControls">
         <button class="float-btn" id="btnFloatUI" onclick="toggleUI()" title="UI 표시/숨김 (단축키: Tab 또는 H)">
             <span id="uiToggleIcon">👁️</span> <span id="uiToggleText">UI 숨기기 (Tab)</span>
         </button>
         <button class="float-btn" id="btnFloatFS" onclick="toggleFullscreen()" title="모니터 화면 전체를 캔버스로 채우기 (단축키: F11)">
-            <span id="fsIcon">🖥️</span> <span id="fsText">모니터 전체 캔버스 (F11)</span>
+            <span id="fsIcon">🖥️</span> <span id="fsText">모니터 전체화면 (F11)</span>
         </button>
     </div>
 
-    <header>
-        <h1>🎨 Gartic Phone 가상 캔버스 테스트벤치</h1>
-        <p>Gartic Phone Assistant 자동 그리기 매크로 및 모니터 전체화면(Full Monitor) 정밀 검증용 보드</p>
-    </header>
-
-    <div class="workspace">
-        <!-- 좌측 조작 도구 패널 -->
-        <div class="tools-panel" id="toolsPanel">
-
-            <!-- 1. 캔버스 모드 및 해상도 설정 (핵심 추가 기능) -->
-            <div class="tool-section">
-                <div class="tool-title">
-                    <span>캔버스 해상도 / 모드</span>
-                    <span class="tool-val" id="resVal">960 × 540</span>
-                </div>
-                <button class="btn btn-purple" id="btnFillMonitor" onclick="toggleFullscreen()" title="브라우저를 전체화면으로 전환하고 캔버스를 모니터 영역 전체(100vw x 100vh)로 꽉 채웁니다.">
-                    🖥️ 모니터 영역 전체 채우기 (F11)
-                </button>
-                <div class="btn-group" style="margin-top: 4px;">
-                    <button class="btn active" id="resPresetGartic" onclick="setResolutionPreset('960x540')">갈틱 기본 (960×540)</button>
-                    <button class="btn" id="resPresetFHD" onclick="setResolutionPreset('1920x1080')">FHD (1920×1080)</button>
-                    <button class="btn" id="resPresetQHD" onclick="setResolutionPreset('2560x1440')">QHD (2560×1440)</button>
-                </div>
-                <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
-                    <input type="number" id="customWidth" placeholder="W (가로)" value="960" style="width: 75px; padding: 4px 6px; background:#111425; border:1px solid var(--panel-border); color:#fff; border-radius:6px; font-size:12px; text-align:center;">
-                    <span style="font-size: 12px; color: var(--text-muted);">×</span>
-                    <input type="number" id="customHeight" placeholder="H (세로)" value="540" style="width: 75px; padding: 4px 6px; background:#111425; border:1px solid var(--panel-border); color:#fff; border-radius:6px; font-size:12px; text-align:center;">
-                    <button class="btn btn-action" onclick="applyCustomResolution()" style="padding: 4px 8px; font-size: 11px;">적용</button>
-                </div>
-            </div>
-
-            <!-- 2. 도구 선택 (펜 / 지우개) -->
-            <div class="tool-section">
-                <div class="tool-title">그리기 도구</div>
-                <div class="btn-group">
-                    <button class="btn active" id="btnPen" onclick="setTool('pen')">
-                        ✏️ 펜 (B)
-                    </button>
-                    <button class="btn" id="btnEraser" onclick="setTool('eraser')">
-                        🧹 지우개 (E)
-                    </button>
-                </div>
-            </div>
-
-            <!-- 3. 페인팅 굵기 (Brush Size) -->
-            <div class="tool-section">
-                <div class="tool-title">
-                    <span>페인팅 굵기</span>
-                    <span class="tool-val" id="sizeVal">4 px</span>
-                </div>
-                <div class="slider-container">
-                    <input type="range" id="sizeSlider" min="1" max="80" value="4" oninput="updateSize(this.value)">
-                </div>
-                <div class="btn-group">
-                    <button class="btn" onclick="updateSize(1)">1px</button>
-                    <button class="btn active" id="size4" onclick="updateSize(4)">4px</button>
-                    <button class="btn" id="size10" onclick="updateSize(10)">10px</button>
-                    <button class="btn" id="size24" onclick="updateSize(24)">24px</button>
-                    <button class="btn" id="size48" onclick="updateSize(48)">48px</button>
-                </div>
-            </div>
-
-            <!-- 4. 페인팅 투명도 (Opacity) -->
-            <div class="tool-section">
-                <div class="tool-title">
-                    <span>페인팅 투명도 (불투명도)</span>
-                    <span class="tool-val" id="opacityVal">100%</span>
-                </div>
-                <div class="slider-container">
-                    <input type="range" id="opacitySlider" min="5" max="100" value="100" oninput="updateOpacity(this.value)">
-                </div>
-                <div class="btn-group">
-                    <button class="btn" onclick="updateOpacity(25)">25%</button>
-                    <button class="btn" onclick="updateOpacity(50)">50%</button>
-                    <button class="btn" onclick="updateOpacity(75)">75%</button>
-                    <button class="btn active" id="op100" onclick="updateOpacity(100)">100%</button>
-                </div>
-            </div>
-
-            <!-- 5. 브러시 상태 미리보기 -->
-            <div class="tool-section">
-                <div class="tool-title">브러시 미리보기</div>
-                <div class="brush-preview-box">
-                    <div class="brush-preview-circle" id="brushPreview" style="width: 4px; height: 4px; opacity: 1.0;"></div>
-                </div>
-            </div>
-
-            <!-- 6. 색상 팔레트 -->
-            <div class="tool-section">
-                <div class="tool-title">색상 팔레트</div>
-                <div class="palette-grid" id="palette">
-                    <!-- 기본 갈틱폰 색상표 18종 -->
-                    <div class="color-dot active" style="background:#000000;" onclick="setColor('#000000', this)"></div>
-                    <div class="color-dot" style="background:#555555;" onclick="setColor('#555555', this)"></div>
-                    <div class="color-dot" style="background:#aaaaaa;" onclick="setColor('#aaaaaa', this)"></div>
-                    <div class="color-dot" style="background:#ffffff; border:1px solid #444;" onclick="setColor('#ffffff', this)"></div>
-                    <div class="color-dot" style="background:#ef4444;" onclick="setColor('#ef4444', this)"></div>
-                    <div class="color-dot" style="background:#f97316;" onclick="setColor('#f97316', this)"></div>
-
-                    <div class="color-dot" style="background:#eab308;" onclick="setColor('#eab308', this)"></div>
-                    <div class="color-dot" style="background:#22c55e;" onclick="setColor('#22c55e', this)"></div>
-                    <div class="color-dot" style="background:#06b6d4;" onclick="setColor('#06b6d4', this)"></div>
-                    <div class="color-dot" style="background:#3b82f6;" onclick="setColor('#3b82f6', this)"></div>
-                    <div class="color-dot" style="background:#a855f7;" onclick="setColor('#a855f7', this)"></div>
-                    <div class="color-dot" style="background:#ec4899;" onclick="setColor('#ec4899', this)"></div>
-
-                    <div class="color-dot" style="background:#78350f;" onclick="setColor('#78350f', this)"></div>
-                    <div class="color-dot" style="background:#b45309;" onclick="setColor('#b45309', this)"></div>
-                    <div class="color-dot" style="background:#14532d;" onclick="setColor('#14532d', this)"></div>
-                    <div class="color-dot" style="background:#1e3a8a;" onclick="setColor('#1e3a8a', this)"></div>
-                    <div class="color-dot" style="background:#581c87;" onclick="setColor('#581c87', this)"></div>
-                    <div class="color-dot" style="background:#fbcfe8;" onclick="setColor('#fbcfe8', this)"></div>
-                </div>
-                <input type="color" id="customColor" class="custom-color-picker" value="#000000" onchange="setColor(this.value)">
-            </div>
-
-            <!-- 7. 초기화 및 저장 액션 도구 -->
-            <div class="tool-section">
-                <div class="tool-title">캔버스 제어</div>
-                <div class="btn-group">
-                    <button class="btn btn-action" onclick="undo()" title="실행 취소 (Ctrl+Z)">↩ 실행 취소</button>
-                    <button class="btn btn-action" onclick="redo()" title="다시 실행 (Ctrl+Y)">↪ 다시 실행</button>
-                </div>
-                <button class="btn btn-danger" style="margin-top: 4px;" onclick="clearCanvas()" title="캔버스 전체 흰색 초기화 (C)">
-                    🗑️ 모두 초기화 (Clear All)
-                </button>
-                <div class="btn-group" style="margin-top: 4px;">
-                    <button class="btn btn-success" onclick="saveAsWebp()" title="고화질 WebP 형식으로 저장 (Ctrl+S)">
-                        🌐 WebP 저장
-                    </button>
-                    <button class="btn btn-action" onclick="saveAsPng()" title="무손실 PNG 형식으로 저장">
-                        💾 PNG 저장
-                    </button>
-                </div>
-            </div>
-
+    <!-- 3. 좌측 플로팅 조작 도구 패널 (Canvas Overlay) -->
+    <div class="tools-panel" id="toolsPanel">
+        <div class="panel-header">
+            <h2>🎨 Gartic 캔버스 보드</h2>
+            <span class="badge-fs" id="badgeFS">전체화면 캔버스</span>
         </div>
 
-        <!-- 우측 캔버스 영역 -->
-        <div class="canvas-wrapper">
-            <canvas id="garticCanvas" width="960" height="540"></canvas>
-            
-            <div class="info-bar" id="infoBar">
-                <div class="info-item">
-                    모드: <b id="modeInfo">창 모드 (960×540)</b>
-                </div>
-                <div class="info-item">
-                    좌표: <b id="posInfo">X: 0, Y: 0</b>
-                </div>
-                <div class="info-item">
-                    획수: <b id="strokeCount">0</b> 개
-                </div>
-                <div class="info-item">
-                    점: <b id="pointCount">0</b> pt
-                </div>
-                <div class="info-item">
-                    수신: <b id="hzVal">0</b> Hz
-                </div>
-                <div class="info-item">
-                    <span>CANVAS_AREA: <b id="areaCoords">계산 중...</b></span>
-                    <button class="copy-btn" onclick="copyAreaCoords()" title="line_draw_setting.txt 에 넣을 CANVAS_AREA 좌표 복사">좌표 복사</button>
-                </div>
+        <!-- 캔버스 해상도 정보 및 제어 -->
+        <div class="tool-section">
+            <div class="tool-title">
+                <span>캔버스 해상도</span>
+                <span class="tool-val" id="resVal">계산 중...</span>
+            </div>
+            <button class="btn btn-purple" id="btnToggleFS" onclick="toggleFullscreen()" title="모니터 전체화면으로 전환 (단축키: F11)">
+                🖥️ 모니터 전체화면 (F11)
+            </button>
+        </div>
+
+        <!-- 도구 선택 (펜 / 지우개) -->
+        <div class="tool-section">
+            <div class="tool-title">그리기 도구</div>
+            <div class="btn-group">
+                <button class="btn active" id="btnPen" onclick="setTool('pen')">
+                    ✏️ 펜 (B)
+                </button>
+                <button class="btn" id="btnEraser" onclick="setTool('eraser')">
+                    🧹 지우개 (E)
+                </button>
+            </div>
+        </div>
+
+        <!-- 페인팅 굵기 -->
+        <div class="tool-section">
+            <div class="tool-title">
+                <span>페인팅 굵기</span>
+                <span class="tool-val" id="sizeVal">4 px</span>
+            </div>
+            <div class="slider-container">
+                <input type="range" id="sizeSlider" min="1" max="80" value="4" oninput="updateSize(this.value)">
+            </div>
+            <div class="btn-group">
+                <button class="btn" onclick="updateSize(1)">1px</button>
+                <button class="btn active" id="size4" onclick="updateSize(4)">4px</button>
+                <button class="btn" id="size10" onclick="updateSize(10)">10px</button>
+                <button class="btn" id="size24" onclick="updateSize(24)">24px</button>
+                <button class="btn" id="size48" onclick="updateSize(48)">48px</button>
+            </div>
+        </div>
+
+        <!-- 페인팅 투명도 (불투명도) -->
+        <div class="tool-section">
+            <div class="tool-title">
+                <span>투명도 (불투명도)</span>
+                <span class="tool-val" id="opacityVal">100%</span>
+            </div>
+            <div class="slider-container">
+                <input type="range" id="opacitySlider" min="5" max="100" value="100" oninput="updateOpacity(this.value)">
+            </div>
+            <div class="btn-group">
+                <button class="btn" onclick="updateOpacity(25)">25%</button>
+                <button class="btn" onclick="updateOpacity(50)">50%</button>
+                <button class="btn" onclick="updateOpacity(75)">75%</button>
+                <button class="btn active" id="op100" onclick="updateOpacity(100)">100%</button>
+            </div>
+        </div>
+
+        <!-- 브러시 미리보기 -->
+        <div class="tool-section">
+            <div class="tool-title">브러시 미리보기</div>
+            <div class="brush-preview-box">
+                <div class="brush-preview-circle" id="brushPreview" style="width: 4px; height: 4px; opacity: 1.0;"></div>
+            </div>
+        </div>
+
+        <!-- 색상 팔레트 -->
+        <div class="tool-section">
+            <div class="tool-title">색상 팔레트</div>
+            <div class="palette-grid" id="palette">
+                <!-- 기본 갈틱폰 18색 -->
+                <div class="color-dot active" style="background:#000000;" onclick="setColor('#000000', this)"></div>
+                <div class="color-dot" style="background:#555555;" onclick="setColor('#555555', this)"></div>
+                <div class="color-dot" style="background:#aaaaaa;" onclick="setColor('#aaaaaa', this)"></div>
+                <div class="color-dot" style="background:#ffffff; border:1px solid #444;" onclick="setColor('#ffffff', this)"></div>
+                <div class="color-dot" style="background:#ef4444;" onclick="setColor('#ef4444', this)"></div>
+                <div class="color-dot" style="background:#f97316;" onclick="setColor('#f97316', this)"></div>
+
+                <div class="color-dot" style="background:#eab308;" onclick="setColor('#eab308', this)"></div>
+                <div class="color-dot" style="background:#22c55e;" onclick="setColor('#22c55e', this)"></div>
+                <div class="color-dot" style="background:#06b6d4;" onclick="setColor('#06b6d4', this)"></div>
+                <div class="color-dot" style="background:#3b82f6;" onclick="setColor('#3b82f6', this)"></div>
+                <div class="color-dot" style="background:#a855f7;" onclick="setColor('#a855f7', this)"></div>
+                <div class="color-dot" style="background:#ec4899;" onclick="setColor('#ec4899', this)"></div>
+
+                <div class="color-dot" style="background:#78350f;" onclick="setColor('#78350f', this)"></div>
+                <div class="color-dot" style="background:#b45309;" onclick="setColor('#b45309', this)"></div>
+                <div class="color-dot" style="background:#14532d;" onclick="setColor('#14532d', this)"></div>
+                <div class="color-dot" style="background:#1e3a8a;" onclick="setColor('#1e3a8a', this)"></div>
+                <div class="color-dot" style="background:#581c87;" onclick="setColor('#581c87', this)"></div>
+                <div class="color-dot" style="background:#fbcfe8;" onclick="setColor('#fbcfe8', this)"></div>
+            </div>
+            <input type="color" id="customColor" class="custom-color-picker" value="#000000" onchange="setColor(this.value)">
+        </div>
+
+        <!-- 캔버스 액션 (실행취소 / 초기화 / 이미지 저장) -->
+        <div class="tool-section">
+            <div class="tool-title">캔버스 제어</div>
+            <div class="btn-group">
+                <button class="btn btn-action" onclick="undo()" title="실행 취소 (Ctrl+Z)">↩ 실행 취소</button>
+                <button class="btn btn-action" onclick="redo()" title="다시 실행 (Ctrl+Y)">↪ 다시 실행</button>
+            </div>
+            <button class="btn btn-danger" style="margin-top: 4px;" onclick="clearCanvas()" title="캔버스 전체 흰색 초기화 (C)">
+                🗑️ 모두 초기화 (Clear All)
+            </button>
+            <div class="btn-group" style="margin-top: 4px;">
+                <button class="btn btn-success" onclick="saveAsWebp()" title="고화질 WebP 파일로 다운로드 (Ctrl+S)">
+                    🌐 WebP 저장
+                </button>
+                <button class="btn btn-action" onclick="saveAsPng()" title="무손실 PNG 파일로 다운로드">
+                    💾 PNG 저장
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- 토스트 알림창 -->
+    <!-- 4. 하단 플로팅 정보 바 (Canvas HUD) -->
+    <div class="info-bar" id="infoBar">
+        <div class="info-item">
+            상태: <b id="modeInfo">전체화면 캔버스</b>
+        </div>
+        <div class="info-item">
+            마우스: <b id="posInfo">X: 0, Y: 0</b>
+        </div>
+        <div class="info-item">
+            획수: <b id="strokeCount">0</b> 개
+        </div>
+        <div class="info-item">
+            점: <b id="pointCount">0</b> pt
+        </div>
+        <div class="info-item">
+            수신: <b id="hzVal">0</b> Hz
+        </div>
+        <div class="info-item">
+            <span>CANVAS_AREA: <b id="areaCoords">계산 중...</b></span>
+            <button class="copy-btn" onclick="copyAreaCoords()" title="line_draw_setting.txt 에 넣을 좌표를 복사합니다.">좌표 복사</button>
+        </div>
+    </div>
+
+    <!-- 알림 메시지 토스트 -->
     <div id="toast" class="toast"></div>
 
     <script>
@@ -715,33 +613,38 @@
         let lastY = 0;
         let isUIHidden = false;
 
-        // 캔버스 크기 관리
-        let currentPreset = '960x540';
-        let savedWindowSize = { width: 960, height: 540 };
-
-        // 통계 및 히스토리 (오프스크린 스냅샷 방식 - 대용량 QHD/4K에서도 초고속)
+        // 히스토리 관리 (GPU 가속 스냅샷 방식)
         let totalStrokes = 0;
         let totalPoints = 0;
         let historyStack = [];
         let redoStack = [];
-        const MAX_HISTORY = 20;
+        const MAX_HISTORY = 25;
 
-        // Hz 측정
+        // 이벤트 수신율(Hz) 측정
         let mouseEventsThisSecond = 0;
         let lastSecondTime = performance.now();
 
-        // 캔버스 초기화 (흰색 배경)
+        // -------------------------------------------------------------
+        // 캔버스 초기화: 기본적으로 화면 전체(100vw x 100vh)를 캔버스로 설정
+        // -------------------------------------------------------------
         function initCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
+
+            historyStack = [];
+            redoStack = [];
             saveState();
+
             updateDimensionDisplay();
             setTimeout(updateAreaCoords, 100);
         }
 
-        // 히스토리 저장 (오프스크린 캔버스 복사 - 메모리 및 렌더링 최적화)
+        // 히스토리 상태 스냅샷 저장
         function saveState() {
             redoStack = [];
             if (historyStack.length >= MAX_HISTORY) {
@@ -755,166 +658,69 @@
             historyStack.push(snap);
         }
 
-        // 캔버스 크기 동적 변경 (그림 내용 유지 및 스케일링)
-        function resizeCanvas(newWidth, newHeight, preserveContent = true) {
-            newWidth = Math.round(newWidth);
-            newHeight = Math.round(newHeight);
-            if (canvas.width === newWidth && canvas.height === newHeight) return;
+        // 화면 크기 변경 시 캔버스도 화면 전체를 항상 유지 (기존 그림 보존)
+        function handleResize() {
+            const newW = window.innerWidth;
+            const newH = window.innerHeight;
+            if (canvas.width === newW && canvas.height === newH) return;
 
-            let tempCanvas = null;
-            if (preserveContent) {
-                tempCanvas = document.createElement('canvas');
-                tempCanvas.width = canvas.width;
-                tempCanvas.height = canvas.height;
-                const tempCtx = tempCanvas.getContext('2d');
-                tempCtx.drawImage(canvas, 0, 0);
-            }
+            // 기존 그림 임시 보관
+            const temp = document.createElement('canvas');
+            temp.width = canvas.width;
+            temp.height = canvas.height;
+            const tempCtx = temp.getContext('2d');
+            tempCtx.drawImage(canvas, 0, 0);
 
-            canvas.width = newWidth;
-            canvas.height = newHeight;
+            // 새 전체화면 크기로 캔버스 해상도 확장
+            canvas.width = newW;
+            canvas.height = newH;
 
-            // 컨텍스트 리셋 대응 재설정
+            // 컨텍스트 리셋 복구
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
 
-            if (tempCanvas && preserveContent) {
-                // 이전 그림을 새 캔버스에 맞춤 스케일링
-                ctx.drawImage(tempCanvas, 0, 0, tempCanvas.width, tempCanvas.height, 0, 0, newWidth, newHeight);
-            }
+            // 기존 그림 1:1 좌표 그대로 복원 (우하단 빈공간 확장)
+            ctx.drawImage(temp, 0, 0);
 
-            // 히스토리 초기화 후 현재 상태 보관
             historyStack = [];
             redoStack = [];
             saveState();
 
             updateDimensionDisplay();
-            setTimeout(updateAreaCoords, 50);
+            updateAreaCoords();
         }
 
-        // 해상도 텍스트 및 UI 인디케이터 갱신
+        window.addEventListener('resize', handleResize);
+
+        // 해상도 텍스트 표시 갱신
         function updateDimensionDisplay() {
             const isFS = !!document.fullscreenElement;
-            const resText = `${canvas.width} × ${canvas.height}`;
+            const resStr = `${canvas.width} × ${canvas.height}`;
+            
             const resValEl = document.getElementById('resVal');
             if (resValEl) {
-                resValEl.innerText = isFS ? `${resText} (모니터 전체)` : resText;
+                resValEl.innerText = isFS ? `${resStr} (모니터 전체)` : `${resStr} (창 전체)`;
             }
 
             const modeInfoEl = document.getElementById('modeInfo');
             if (modeInfoEl) {
-                modeInfoEl.innerText = isFS ? `🖥️ 모니터 전체화면 (${resText})` : `창 모드 (${resText})`;
+                modeInfoEl.innerText = isFS ? `🖥️ 모니터 전체화면 (${resStr})` : `창 전체화면 (${resStr})`;
             }
 
-            const customW = document.getElementById('customWidth');
-            const customH = document.getElementById('customHeight');
-            if (customW && customH && !isFS) {
-                customW.value = canvas.width;
-                customH.value = canvas.height;
+            const badgeFS = document.getElementById('badgeFS');
+            if (badgeFS) {
+                badgeFS.innerText = isFS ? "모니터 전체화면" : "화면 전체 캔버스";
             }
         }
 
-        // 해상도 프리셋 선택
-        function setResolutionPreset(preset) {
-            if (document.fullscreenElement) {
-                showToast("전체화면 상태에서는 모니터 크기가 자동 적용됩니다.");
-                return;
-            }
-
-            currentPreset = preset;
-            ['Gartic', 'FHD', 'QHD'].forEach(p => {
-                const el = document.getElementById(`resPreset${p}`);
-                if (el) el.classList.remove('active');
-            });
-
-            if (preset === '960x540') {
-                document.getElementById('resPresetGartic')?.classList.add('active');
-                savedWindowSize = { width: 960, height: 540 };
-                resizeCanvas(960, 540, true);
-            } else if (preset === '1920x1080') {
-                document.getElementById('resPresetFHD')?.classList.add('active');
-                savedWindowSize = { width: 1920, height: 1080 };
-                resizeCanvas(1920, 1080, true);
-            } else if (preset === '2560x1440') {
-                document.getElementById('resPresetQHD')?.classList.add('active');
-                savedWindowSize = { width: 2560, height: 1440 };
-                resizeCanvas(2560, 1440, true);
-            }
-            showToast(`캔버스 해상도 변경: ${preset}`);
-        }
-
-        // 사용자 지정 해상도 적용
-        function applyCustomResolution() {
-            if (document.fullscreenElement) {
-                showToast("전체화면 모드에서는 모니터 크기가 자동 적용됩니다.");
-                return;
-            }
-            const w = parseInt(document.getElementById('customWidth').value);
-            const h = parseInt(document.getElementById('customHeight').value);
-            if (isNaN(w) || isNaN(h) || w < 100 || h < 100 || w > 7680 || h > 4320) {
-                showToast("올바른 해상도를 입력해주세요 (100~7680)");
-                return;
-            }
-            ['Gartic', 'FHD', 'QHD'].forEach(p => {
-                const el = document.getElementById(`resPreset${p}`);
-                if (el) el.classList.remove('active');
-            });
-            savedWindowSize = { width: w, height: h };
-            resizeCanvas(w, h, true);
-            showToast(`사용자 지정 해상도 적용: ${w} × ${h}`);
-        }
-
-        // 토스트 알림 표시 함수
-        function showToast(message) {
-            const toast = document.getElementById('toast');
-            toast.innerText = message;
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 2300);
-        }
-
-        // UI 토글 (On / Off) - 캔버스 화면 가림 방지
-        function toggleUI() {
-            isUIHidden = !isUIHidden;
-            document.body.classList.toggle('ui-hidden', isUIHidden);
-            
-            const icon = document.getElementById('uiToggleIcon');
-            const text = document.getElementById('uiToggleText');
-            if (isUIHidden) {
-                if (icon) icon.innerText = '👁️';
-                if (text) text.innerText = 'UI 보이기 (Tab)';
-                showToast("UI 숨김 모드 활성화 (Tab / H 키로 언제든 복귀)");
-            } else {
-                if (icon) icon.innerText = '🕶️';
-                if (text) text.innerText = 'UI 숨기기 (Tab)';
-                showToast("UI 표시 모드");
-            }
-            setTimeout(updateAreaCoords, 250);
-        }
-
-        // 마우스 호버 감지 구역 (UI 숨김 상태에서 우측 상단 접근 시 버튼 안내)
-        const hoverZone = document.getElementById('hoverZone');
-        const floatingControls = document.getElementById('floatingControls');
-        if (hoverZone && floatingControls) {
-            hoverZone.addEventListener('mouseenter', () => {
-                document.body.classList.add('hover-zone-active');
-            });
-            floatingControls.addEventListener('mouseleave', () => {
-                document.body.classList.remove('hover-zone-active');
-            });
-        }
-
-        // -----------------------------------------------------------------
-        // 모니터 전체화면 토글 (F11 대응)
-        // 브라우저만 전체화면이 되는 것이 아니라, 캔버스 자체를 모니터 전체(100vw x 100vh)로 채움!
-        // -----------------------------------------------------------------
+        // -------------------------------------------------------------
+        // 전체화면 (F11) 토글
+        // -------------------------------------------------------------
         async function toggleFullscreen() {
             try {
                 if (!document.fullscreenElement) {
-                    // 전체화면 진입 전 창 크기 저장
-                    savedWindowSize = { width: canvas.width, height: canvas.height };
                     await document.documentElement.requestFullscreen();
                 } else {
                     if (document.exitFullscreen) {
@@ -922,61 +728,65 @@
                     }
                 }
             } catch (err) {
-                console.warn('전체화면 전환 실패 또는 미지원:', err);
-                // 브라우저 정책으로 실패 시 창 내부 꽉 채우기 토글
-                toggleWindowFullFit();
+                console.warn('전체화면 전환 실패 또는 권한 필요:', err);
+                showToast("F11 키를 눌러 모니터 전체화면으로 전환하세요.");
             }
         }
 
-        // 전체화면 상태 변경 감지 리스너
         document.addEventListener('fullscreenchange', () => {
             const isFS = !!document.fullscreenElement;
-            document.body.classList.toggle('fullscreen-mode', isFS);
-            
             const fsIcon = document.getElementById('fsIcon');
             const fsText = document.getElementById('fsText');
             const btnFloatFS = document.getElementById('btnFloatFS');
-            const btnFillMonitor = document.getElementById('btnFillMonitor');
+            const btnToggleFS = document.getElementById('btnToggleFS');
 
             if (isFS) {
-                // 모니터 전체화면 진입
                 if (fsIcon) fsIcon.innerText = '🗗';
                 if (fsText) fsText.innerText = '창 모드 복귀 (F11)';
                 if (btnFloatFS) btnFloatFS.classList.add('active-fs');
-                if (btnFillMonitor) btnFillMonitor.innerText = '🗗 창 모드로 복귀 (F11)';
-
-                // 캔버스를 모니터 전체 해상도로 꽉 채우기!
-                const targetW = window.innerWidth || window.screen.width;
-                const targetH = window.innerHeight || window.screen.height;
-                resizeCanvas(targetW, targetH, true);
-                showToast(`🖥️ 캔버스가 모니터 전체 영역(${targetW} × ${targetH})에 적용되었습니다!`);
+                if (btnToggleFS) btnToggleFS.innerText = '🗗 창 모드로 복귀 (F11)';
+                showToast(`🖥️ 모니터 전체화면 캔버스 활성화 (${window.innerWidth} × ${window.innerHeight})`);
             } else {
-                // 창 모드로 복귀
                 if (fsIcon) fsIcon.innerText = '🖥️';
-                if (fsText) fsText.innerText = '모니터 전체 캔버스 (F11)';
+                if (fsText) fsText.innerText = '모니터 전체화면 (F11)';
                 if (btnFloatFS) btnFloatFS.classList.remove('active-fs');
-                if (btnFillMonitor) btnFillMonitor.innerText = '🖥️ 모니터 영역 전체 채우기 (F11)';
-
-                // 이전 창 모드 규격으로 복구 (또는 현재 프리셋 복구)
-                const restoreW = savedWindowSize.width || 960;
-                const restoreH = savedWindowSize.height || 540;
-                resizeCanvas(restoreW, restoreH, true);
+                if (btnToggleFS) btnToggleFS.innerText = '🖥️ 모니터 전체화면 (F11)';
                 showToast("창 모드로 복귀되었습니다.");
             }
-            updateAreaCoords();
+            handleResize();
         });
 
-        // 윈도우 리사이즈 시 전체화면 중이면 동적 일치 유지
-        window.addEventListener('resize', () => {
-            if (document.fullscreenElement) {
-                const targetW = window.innerWidth;
-                const targetH = window.innerHeight;
-                if (canvas.width !== targetW || canvas.height !== targetH) {
-                    resizeCanvas(targetW, targetH, true);
-                }
+        // -------------------------------------------------------------
+        // UI 숨김/표시 토글 (단축키: Tab 또는 H)
+        // -------------------------------------------------------------
+        function toggleUI() {
+            isUIHidden = !isUIHidden;
+            document.body.classList.toggle('ui-hidden', isUIHidden);
+
+            const icon = document.getElementById('uiToggleIcon');
+            const text = document.getElementById('uiToggleText');
+
+            if (isUIHidden) {
+                if (icon) icon.innerText = '👁️';
+                if (text) text.innerText = 'UI 보이기 (Tab)';
+                showToast("UI 숨김 활성화 (Tab / H 키로 언제든 복귀)");
+            } else {
+                if (icon) icon.innerText = '🕶️';
+                if (text) text.innerText = 'UI 숨기기 (Tab)';
+                showToast("UI 표시 모드");
             }
-            updateAreaCoords();
-        });
+            setTimeout(updateAreaCoords, 100);
+        }
+
+        // 토스트 알림 표시
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2200);
+        }
 
         // 도구 변경 (펜 / 지우개)
         function setTool(tool) {
@@ -992,7 +802,6 @@
             document.getElementById('sizeSlider').value = currentSize;
             document.getElementById('sizeVal').innerText = `${currentSize} px`;
 
-            // 프리셋 버튼 active 토글
             [1, 4, 10, 24, 48].forEach(s => {
                 const el = document.getElementById(`size${s}`);
                 if (el) el.classList.toggle('active', s === currentSize);
@@ -1007,7 +816,6 @@
             document.getElementById('opacitySlider').value = val;
             document.getElementById('opacityVal').innerText = `${val}%`;
 
-            // 프리셋 버튼 active 토글
             [25, 50, 75, 100].forEach(op => {
                 const el = document.getElementById(`op${op}`);
                 if (el) el.classList.toggle('active', op === parseInt(val));
@@ -1021,13 +829,11 @@
             currentColor = hex;
             document.getElementById('customColor').value = hex;
 
-            // 팔레트 active 표시
             document.querySelectorAll('.color-dot').forEach(dot => dot.classList.remove('active'));
             if (el) {
                 el.classList.add('active');
             }
 
-            // 색상 변경 시 자동으로 펜 모드로 복귀
             if (currentTool === 'eraser') {
                 setTool('pen');
             }
@@ -1038,8 +844,8 @@
         // 브러시 미리보기 업데이트
         function updateBrushPreview() {
             const preview = document.getElementById('brushPreview');
-            preview.style.width = `${Math.min(currentSize, 44)}px`;
-            preview.style.height = `${Math.min(currentSize, 44)}px`;
+            preview.style.width = `${Math.min(currentSize, 40)}px`;
+            preview.style.height = `${Math.min(currentSize, 40)}px`;
             preview.style.opacity = currentOpacity;
             preview.style.backgroundColor = (currentTool === 'eraser') ? '#ffffff' : currentColor;
             preview.style.border = (currentTool === 'eraser') ? '2px dashed #94a3b8' : 'none';
@@ -1079,14 +885,11 @@
             }
         }
 
-        // 마우스 좌표 변환 (모니터 전체화면 및 1:1 매핑)
+        // 캔버스 마우스 좌표 변환 (전체화면 1:1 매핑)
         function getCanvasPos(e) {
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
             return {
-                x: Math.round((e.clientX - rect.left) * scaleX),
-                y: Math.round((e.clientY - rect.top) * scaleY)
+                x: Math.round(e.clientX),
+                y: Math.round(e.clientY)
             };
         }
 
@@ -1101,7 +904,6 @@
             lastX = pos.x;
             lastY = pos.y;
 
-            // 단일 클릭 시 원형 점 그리기
             ctx.save();
             ctx.lineWidth = currentSize;
             ctx.globalAlpha = currentOpacity;
@@ -1159,21 +961,21 @@
 
         // 키보드 단축키
         window.addEventListener('keydown', (e) => {
-            // F11: 모니터 전체화면 캔버스 토글
+            // F11: 모니터 전체화면 토글
             if (e.key === 'F11') {
                 e.preventDefault();
                 toggleFullscreen();
                 return;
             }
 
-            // Tab 또는 H: UI 토글 (캔버스 가림 방지)
+            // Tab 또는 H: UI 토글
             if (e.key === 'Tab' || e.key.toLowerCase() === 'h') {
                 e.preventDefault();
                 toggleUI();
                 return;
             }
 
-            // Ctrl+S: 고화질 WebP 저장
+            // Ctrl+S: WebP 저장
             if (e.ctrlKey && e.key.toLowerCase() === 's') {
                 e.preventDefault();
                 saveAsWebp();
@@ -1187,7 +989,7 @@
                 else undo();
                 return;
             }
-            
+
             // Ctrl+Y: 다시 실행
             if (e.ctrlKey && e.key.toLowerCase() === 'y') {
                 e.preventDefault();
@@ -1195,7 +997,7 @@
                 return;
             }
 
-            // 단일 키 (입력 폼에 포커스 없을 때만 작동)
+            // 단일 키 (인풋 폼이 아닐 때)
             const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
             if (activeTag === 'input' || activeTag === 'textarea') return;
 
@@ -1210,36 +1012,31 @@
             }
         });
 
-        // CANVAS_AREA 자동 계산 (단일/듀얼 모니터 및 전체화면 정밀 대응)
+        // CANVAS_AREA 자동 계산
         function updateAreaCoords() {
-            const rect = canvas.getBoundingClientRect();
             const isFS = !!document.fullscreenElement;
             const screenLeft = (window.screenLeft !== undefined) ? window.screenLeft : (window.screenX || 0);
             const screenTop = (window.screenTop !== undefined) ? window.screenTop : (window.screenY || 0);
-            
+
             let left, top, right, bottom;
             if (isFS) {
-                // 모니터 전체화면 상태: 화면 좌상단(0,0 또는 듀얼모니터 오프셋)부터 전체 해상도
                 left = Math.round(screenLeft);
                 top = Math.round(screenTop);
-                right = Math.round(left + (window.innerWidth || window.screen.width));
-                bottom = Math.round(top + (window.innerHeight || window.screen.height));
+                right = Math.round(left + window.innerWidth);
+                bottom = Math.round(top + window.innerHeight);
             } else {
-                // 창 모드 상태: 브라우저 타이틀바/주소창 오프셋 반영
-                const browserChromeHeight = Math.max(0, window.outerHeight - window.innerHeight);
-                left = Math.round(screenLeft + rect.left);
-                top = Math.round(screenTop + browserChromeHeight + rect.top);
-                right = Math.round(left + rect.width);
-                bottom = Math.round(top + rect.height);
+                const chromeHeight = Math.max(0, window.outerHeight - window.innerHeight);
+                left = Math.round(screenLeft);
+                top = Math.round(screenTop + chromeHeight);
+                right = Math.round(left + window.innerWidth);
+                bottom = Math.round(top + window.innerHeight);
             }
-            
+
             const coordStr = `${left},${top},${right},${bottom}`;
             const areaEl = document.getElementById('areaCoords');
             if (areaEl) areaEl.innerText = coordStr;
             return coordStr;
         }
-
-        window.addEventListener('scroll', updateAreaCoords);
 
         // 좌표 클립보드 복사
         function copyAreaCoords() {
@@ -1247,7 +1044,6 @@
             navigator.clipboard.writeText(coords).then(() => {
                 showToast(`📋 CANVAS_AREA 복사됨: ${coords}`);
             }).catch(() => {
-                // Fallback for clipboard
                 const textarea = document.createElement('textarea');
                 textarea.value = coords;
                 document.body.appendChild(textarea);
@@ -1262,7 +1058,7 @@
         function saveAsWebp() {
             canvas.toBlob((blob) => {
                 if (!blob) {
-                    showToast("WebP 생성 실패");
+                    showToast("WebP 저장 실패");
                     return;
                 }
                 const url = URL.createObjectURL(blob);
@@ -1284,7 +1080,7 @@
             showToast(`💾 PNG 저장 완료 (${canvas.width}×${canvas.height})`);
         }
 
-        // 초기 시작
+        // 시작
         initCanvas();
         updateBrushPreview();
     </script>
