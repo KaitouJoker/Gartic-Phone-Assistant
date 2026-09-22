@@ -35,18 +35,29 @@
         }
 
         /* -------------------------------------------------------------
-           기본 캔버스: 화면 전체(100vw x 100vh)를 기본으로 가득 채움
+           듀얼 캔버스 레이어 아키텍처
+           1) #garticCanvas : 최종 확정 그림이 저장되는 메인 캔버스
+           2) #draftCanvas  : 실시간 스트로크 누적용 오버레이 캔버스 (투명도 중첩 방지)
            ------------------------------------------------------------- */
-        #garticCanvas {
+        #garticCanvas, #draftCanvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100vw;
             height: 100vh;
             display: block;
-            background-color: #ffffff;
             cursor: crosshair;
+        }
+
+        #garticCanvas {
+            background-color: #ffffff;
             z-index: 1;
+        }
+
+        #draftCanvas {
+            background-color: transparent;
+            pointer-events: none; /* 마우스 이벤트가 아래 메인 캔버스로 온전히 통과 */
+            z-index: 2;
         }
 
         /* -------------------------------------------------------------
@@ -376,14 +387,12 @@
             display: none !important;
         }
 
-        /* UI 숨김 시 우측 상단 컨트롤을 기본적으로 투명화하여 매크로 그리기 방해 차단 */
         body.ui-hidden .floating-controls {
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.25s ease;
         }
 
-        /* 우측 상단 호버 존: 마우스를 가져가면 살짝 나타나 클릭 가능 */
         .hover-zone-topright {
             position: fixed;
             top: 0;
@@ -433,13 +442,16 @@
 </head>
 <body>
 
-    <!-- 1. 메인 캔버스: 화면 전체를 100% 기본으로 차지 -->
+    <!-- 1. 메인 캔버스: 영구 저장용 흰색 배경 캔버스 -->
     <canvas id="garticCanvas"></canvas>
+
+    <!-- 2. 드래프트 캔버스: 실시간 스트로크 드로잉용 (점 중첩 투명도 누적 방지) -->
+    <canvas id="draftCanvas"></canvas>
 
     <!-- UI 숨김 상태에서 마우스로 우측 상단 접근 시 복원 버튼을 표시해주는 감지 구역 -->
     <div class="hover-zone-topright" id="hoverZone"></div>
 
-    <!-- 2. 우측 상단 플로팅 컨트롤 (UI 토글 및 모니터 전체화면) -->
+    <!-- 3. 우측 상단 플로팅 컨트롤 (UI 토글 및 모니터 전체화면) -->
     <div class="floating-controls" id="floatingControls">
         <button class="float-btn" id="btnFloatUI" onclick="toggleUI()" title="UI 표시/숨김 (단축키: Tab 또는 H)">
             <span id="uiToggleIcon">👁️</span> <span id="uiToggleText">UI 숨기기 (Tab)</span>
@@ -449,7 +461,7 @@
         </button>
     </div>
 
-    <!-- 3. 좌측 플로팅 조작 도구 패널 (Canvas Overlay) -->
+    <!-- 4. 좌측 플로팅 조작 도구 패널 (Canvas Overlay) -->
     <div class="tools-panel" id="toolsPanel">
         <div class="panel-header">
             <h2>🎨 Gartic 캔버스 보드</h2>
@@ -573,7 +585,7 @@
         </div>
     </div>
 
-    <!-- 4. 하단 플로팅 정보 바 (Canvas HUD) -->
+    <!-- 5. 하단 플로팅 정보 바 (Canvas HUD) -->
     <div class="info-bar" id="infoBar">
         <div class="info-item">
             상태: <b id="modeInfo">전체화면 캔버스</b>
@@ -600,8 +612,11 @@
     <div id="toast" class="toast"></div>
 
     <script>
-        const canvas = document.getElementById('garticCanvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const mainCanvas = document.getElementById('garticCanvas');
+        const mainCtx = mainCanvas.getContext('2d', { willReadFrequently: true });
+
+        const draftCanvas = document.getElementById('draftCanvas');
+        const draftCtx = draftCanvas.getContext('2d', { willReadFrequently: true });
 
         // 상태 변수
         let currentTool = 'pen'; // 'pen' 또는 'eraser'
@@ -625,16 +640,25 @@
         let lastSecondTime = performance.now();
 
         // -------------------------------------------------------------
-        // 캔버스 초기화: 기본적으로 화면 전체(100vw x 100vh)를 캔버스로 설정
+        // 캔버스 초기화: 메인 및 드래프트 캔버스를 화면 전체로 설정
         // -------------------------------------------------------------
         function initCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+            const w = window.innerWidth;
+            const h = window.innerHeight;
 
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
+            mainCanvas.width = w;
+            mainCanvas.height = h;
+            draftCanvas.width = w;
+            draftCanvas.height = h;
+
+            mainCtx.fillStyle = '#ffffff';
+            mainCtx.fillRect(0, 0, w, h);
+            mainCtx.lineCap = 'round';
+            mainCtx.lineJoin = 'round';
+
+            draftCtx.lineCap = 'round';
+            draftCtx.lineJoin = 'round';
+            draftCanvas.style.opacity = currentOpacity;
 
             historyStack = [];
             redoStack = [];
@@ -651,10 +675,10 @@
                 historyStack.shift();
             }
             const snap = document.createElement('canvas');
-            snap.width = canvas.width;
-            snap.height = canvas.height;
+            snap.width = mainCanvas.width;
+            snap.height = mainCanvas.height;
             const sCtx = snap.getContext('2d');
-            sCtx.drawImage(canvas, 0, 0);
+            sCtx.drawImage(mainCanvas, 0, 0);
             historyStack.push(snap);
         }
 
@@ -662,27 +686,33 @@
         function handleResize() {
             const newW = window.innerWidth;
             const newH = window.innerHeight;
-            if (canvas.width === newW && canvas.height === newH) return;
+            if (mainCanvas.width === newW && mainCanvas.height === newH) return;
 
             // 기존 그림 임시 보관
             const temp = document.createElement('canvas');
-            temp.width = canvas.width;
-            temp.height = canvas.height;
+            temp.width = mainCanvas.width;
+            temp.height = mainCanvas.height;
             const tempCtx = temp.getContext('2d');
-            tempCtx.drawImage(canvas, 0, 0);
+            tempCtx.drawImage(mainCanvas, 0, 0);
 
-            // 새 전체화면 크기로 캔버스 해상도 확장
-            canvas.width = newW;
-            canvas.height = newH;
+            // 새 전체화면 크기로 해상도 확장
+            mainCanvas.width = newW;
+            mainCanvas.height = newH;
+            draftCanvas.width = newW;
+            draftCanvas.height = newH;
 
             // 컨텍스트 리셋 복구
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
+            mainCtx.fillStyle = '#ffffff';
+            mainCtx.fillRect(0, 0, newW, newH);
+            mainCtx.lineCap = 'round';
+            mainCtx.lineJoin = 'round';
 
-            // 기존 그림 1:1 좌표 그대로 복원 (우하단 빈공간 확장)
-            ctx.drawImage(temp, 0, 0);
+            draftCtx.lineCap = 'round';
+            draftCtx.lineJoin = 'round';
+            draftCanvas.style.opacity = currentOpacity;
+
+            // 기존 그림 복원
+            mainCtx.drawImage(temp, 0, 0);
 
             historyStack = [];
             redoStack = [];
@@ -697,7 +727,7 @@
         // 해상도 텍스트 표시 갱신
         function updateDimensionDisplay() {
             const isFS = !!document.fullscreenElement;
-            const resStr = `${canvas.width} × ${canvas.height}`;
+            const resStr = `${mainCanvas.width} × ${mainCanvas.height}`;
             
             const resValEl = document.getElementById('resVal');
             if (resValEl) {
@@ -793,6 +823,20 @@
             currentTool = tool;
             document.getElementById('btnPen').classList.toggle('active', tool === 'pen');
             document.getElementById('btnEraser').classList.toggle('active', tool === 'eraser');
+
+            // 지우개 모드 시 상태 피드백 (지우개는 항상 100% 완전 불투명 화이트로 완벽 소거)
+            const opValEl = document.getElementById('opacityVal');
+            if (opValEl) {
+                if (tool === 'eraser') {
+                    opValEl.innerText = '100% (지우개 고정)';
+                } else {
+                    opValEl.innerText = `${Math.round(currentOpacity * 100)}%`;
+                }
+            }
+
+            // 혹시 남아있을 수 있는 드래프트 정리
+            draftCtx.clearRect(0, 0, draftCanvas.width, draftCanvas.height);
+
             updateBrushPreview();
         }
 
@@ -814,13 +858,23 @@
         function updateOpacity(val) {
             currentOpacity = parseInt(val) / 100.0;
             document.getElementById('opacitySlider').value = val;
-            document.getElementById('opacityVal').innerText = `${val}%`;
+
+            const opValEl = document.getElementById('opacityVal');
+            if (opValEl) {
+                if (currentTool === 'eraser') {
+                    opValEl.innerText = '100% (지우개 고정)';
+                } else {
+                    opValEl.innerText = `${val}%`;
+                }
+            }
 
             [25, 50, 75, 100].forEach(op => {
                 const el = document.getElementById(`op${op}`);
                 if (el) el.classList.toggle('active', op === parseInt(val));
             });
 
+            // 드래프트 캔버스에 투명도 동기화
+            draftCanvas.style.opacity = currentOpacity;
             updateBrushPreview();
         }
 
@@ -834,6 +888,7 @@
                 el.classList.add('active');
             }
 
+            // 색상 선택 시 자동으로 펜 모드로 복귀
             if (currentTool === 'eraser') {
                 setTool('pen');
             }
@@ -846,55 +901,67 @@
             const preview = document.getElementById('brushPreview');
             preview.style.width = `${Math.min(currentSize, 40)}px`;
             preview.style.height = `${Math.min(currentSize, 40)}px`;
-            preview.style.opacity = currentOpacity;
+            // 지우개는 항상 100% 불투명 원형으로 표시
+            preview.style.opacity = (currentTool === 'eraser') ? '1.0' : currentOpacity;
             preview.style.backgroundColor = (currentTool === 'eraser') ? '#ffffff' : currentColor;
             preview.style.border = (currentTool === 'eraser') ? '2px dashed #94a3b8' : 'none';
         }
 
         // 캔버스 모두 초기화
         function clearCanvas() {
-            saveState();
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            draftCtx.clearRect(0, 0, draftCanvas.width, draftCanvas.height);
+            mainCtx.fillStyle = '#ffffff';
+            mainCtx.fillRect(0, 0, mainCanvas.width, mainCanvas.height);
             totalStrokes = 0;
             totalPoints = 0;
             document.getElementById('strokeCount').innerText = '0';
             document.getElementById('pointCount').innerText = '0';
+            saveState();
             showToast("캔버스가 초기화되었습니다.");
         }
 
         // 실행 취소 (Undo)
         function undo() {
+            draftCtx.clearRect(0, 0, draftCanvas.width, draftCanvas.height);
             if (historyStack.length > 1) {
                 redoStack.push(historyStack.pop());
                 const snap = historyStack[historyStack.length - 1];
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(snap, 0, 0);
+                mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+                mainCtx.drawImage(snap, 0, 0);
                 showToast("↩ 실행 취소");
             }
         }
 
         // 다시 실행 (Redo)
         function redo() {
+            draftCtx.clearRect(0, 0, draftCanvas.width, draftCanvas.height);
             if (redoStack.length > 0) {
                 const snap = redoStack.pop();
                 historyStack.push(snap);
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(snap, 0, 0);
+                mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+                mainCtx.drawImage(snap, 0, 0);
                 showToast("↪ 다시 실행");
             }
         }
 
         // 캔버스 마우스 좌표 변환 (전체화면 1:1 매핑)
         function getCanvasPos(e) {
+            const rect = mainCanvas.getBoundingClientRect();
+            const scaleX = mainCanvas.width / rect.width;
+            const scaleY = mainCanvas.height / rect.height;
             return {
-                x: Math.round(e.clientX),
-                y: Math.round(e.clientY)
+                x: Math.round((e.clientX - rect.left) * scaleX),
+                y: Math.round((e.clientY - rect.top) * scaleY)
             };
         }
 
-        // 드로잉 이벤트 리스너
-        canvas.addEventListener('mousedown', (e) => {
+        // -------------------------------------------------------------
+        // 스트로크 드로잉 엔진 (문제 1 & 문제 2 근본적 해결)
+        // 1. 지우개: 항상 100% 완전 불투명(alpha=1.0) 흰색으로 메인 캔버스에 즉각 소거
+        // 2. 펜: 드래프트 레이어에 100% 불투명으로 그려 캡 중첩 투명도 누적을 원천 차단하고,
+        //        해당 스트로크 전체를 사용자 지정 투명도로 1회 블렌딩 합성
+        // -------------------------------------------------------------
+        function startDrawing(e) {
             if (e.button !== 0) return; // 좌클릭만 처리
             isDrawing = true;
             totalStrokes++;
@@ -904,22 +971,42 @@
             lastX = pos.x;
             lastY = pos.y;
 
-            ctx.save();
-            ctx.lineWidth = currentSize;
-            ctx.globalAlpha = currentOpacity;
-            ctx.strokeStyle = (currentTool === 'eraser') ? '#ffffff' : currentColor;
-            ctx.fillStyle = (currentTool === 'eraser') ? '#ffffff' : currentColor;
+            if (currentTool === 'eraser') {
+                // [해결 1] 지우개는 어떤 상황에서도 투명도 없이 100% 완전한 흰색으로 메인 캔버스 소거!
+                mainCtx.save();
+                mainCtx.globalAlpha = 1.0;
+                mainCtx.fillStyle = '#ffffff';
+                mainCtx.strokeStyle = '#ffffff';
+                mainCtx.lineWidth = currentSize;
+                mainCtx.lineCap = 'round';
+                mainCtx.lineJoin = 'round';
+                mainCtx.beginPath();
+                mainCtx.arc(pos.x, pos.y, currentSize / 2, 0, Math.PI * 2);
+                mainCtx.fill();
+                mainCtx.restore();
+            } else {
+                // [해결 2] 펜은 드래프트 레이어에 완전 불투명(alpha=1.0) 단색으로 그림
+                // 화면 표시에는 CSS opacity를 주어 사용자에게 설정 투명도로 즉시 렌더링
+                draftCtx.clearRect(0, 0, draftCanvas.width, draftCanvas.height);
+                draftCanvas.style.opacity = currentOpacity;
 
-            ctx.beginPath();
-            ctx.arc(lastX, lastY, currentSize / 2, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.restore();
+                draftCtx.save();
+                draftCtx.fillStyle = currentColor;
+                draftCtx.strokeStyle = currentColor;
+                draftCtx.lineWidth = currentSize;
+                draftCtx.lineCap = 'round';
+                draftCtx.lineJoin = 'round';
+                draftCtx.beginPath();
+                draftCtx.arc(pos.x, pos.y, currentSize / 2, 0, Math.PI * 2);
+                draftCtx.fill();
+                draftCtx.restore();
+            }
 
             totalPoints++;
             document.getElementById('pointCount').innerText = totalPoints;
-        });
+        }
 
-        window.addEventListener('mousemove', (e) => {
+        function drawMove(e) {
             // Hz 측정
             mouseEventsThisSecond++;
             const now = performance.now();
@@ -934,30 +1021,66 @@
 
             if (!isDrawing) return;
 
-            ctx.save();
-            ctx.lineWidth = currentSize;
-            ctx.globalAlpha = currentOpacity;
-            ctx.strokeStyle = (currentTool === 'eraser') ? '#ffffff' : currentColor;
-
-            ctx.beginPath();
-            ctx.moveTo(lastX, lastY);
-            ctx.lineTo(pos.x, pos.y);
-            ctx.stroke();
-            ctx.restore();
+            if (currentTool === 'eraser') {
+                // [해결 1] 지우개 드래그 시 100% 불투명 흰색으로 메인 캔버스에서 선을 완벽하게 삭제
+                mainCtx.save();
+                mainCtx.globalAlpha = 1.0;
+                mainCtx.strokeStyle = '#ffffff';
+                mainCtx.lineWidth = currentSize;
+                mainCtx.lineCap = 'round';
+                mainCtx.lineJoin = 'round';
+                mainCtx.beginPath();
+                mainCtx.moveTo(lastX, lastY);
+                mainCtx.lineTo(pos.x, pos.y);
+                mainCtx.stroke();
+                mainCtx.restore();
+            } else {
+                // [해결 2] 점과 점 사이 연결선 그리기:
+                // 드래프트 레이어는 불투명 1.0 상태이므로 마우스 주기가 느리거나 촘촘해도
+                // 겹쳐진 원형 캡에 투명도가 누적되지 않고 완벽하게 하나의 균일한 선으로 유지됨!
+                draftCtx.save();
+                draftCtx.strokeStyle = currentColor;
+                draftCtx.lineWidth = currentSize;
+                draftCtx.lineCap = 'round';
+                draftCtx.lineJoin = 'round';
+                draftCtx.beginPath();
+                draftCtx.moveTo(lastX, lastY);
+                draftCtx.lineTo(pos.x, pos.y);
+                draftCtx.stroke();
+                draftCtx.restore();
+            }
 
             lastX = pos.x;
             lastY = pos.y;
 
             totalPoints++;
             document.getElementById('pointCount').innerText = totalPoints;
-        });
+        }
 
-        window.addEventListener('mouseup', () => {
-            if (isDrawing) {
-                isDrawing = false;
-                saveState();
+        function endDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+
+            if (currentTool === 'pen') {
+                // 마우스를 뗄 때, 드래프트 레이어에 그려진 완벽한 연속선을
+                // 사용자가 지정한 불투명도로 메인 캔버스에 단 1회 블렌딩 합성!
+                mainCtx.save();
+                mainCtx.globalAlpha = currentOpacity;
+                mainCtx.drawImage(draftCanvas, 0, 0);
+                mainCtx.restore();
+
+                // 다음 획을 위해 드래프트 레이어 비우기
+                draftCtx.clearRect(0, 0, draftCanvas.width, draftCanvas.height);
             }
-        });
+
+            saveState();
+        }
+
+        // 이벤트 리스너 등록
+        mainCanvas.addEventListener('mousedown', startDrawing);
+        window.addEventListener('mousemove', drawMove);
+        window.addEventListener('mouseup', endDrawing);
+        window.addEventListener('mouseleave', endDrawing);
 
         // 키보드 단축키
         window.addEventListener('keydown', (e) => {
@@ -1056,7 +1179,8 @@
 
         // WebP 이미지 저장
         function saveAsWebp() {
-            canvas.toBlob((blob) => {
+            if (isDrawing) endDrawing();
+            mainCanvas.toBlob((blob) => {
                 if (!blob) {
                     showToast("WebP 저장 실패");
                     return;
@@ -1064,20 +1188,21 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `gartic_${canvas.width}x${canvas.height}_${Date.now()}.webp`;
+                a.download = `gartic_${mainCanvas.width}x${mainCanvas.height}_${Date.now()}.webp`;
                 a.click();
                 URL.revokeObjectURL(url);
-                showToast(`🌐 WebP 저장 완료 (${canvas.width}×${canvas.height})`);
+                showToast(`🌐 WebP 저장 완료 (${mainCanvas.width}×${mainCanvas.height})`);
             }, 'image/webp', 0.95);
         }
 
         // PNG 이미지 저장
         function saveAsPng() {
+            if (isDrawing) endDrawing();
             const link = document.createElement('a');
-            link.download = `gartic_${canvas.width}x${canvas.height}_${Date.now()}.png`;
-            link.href = canvas.toDataURL('image/png');
+            link.download = `gartic_${mainCanvas.width}x${mainCanvas.height}_${Date.now()}.png`;
+            link.href = mainCanvas.toDataURL('image/png');
             link.click();
-            showToast(`💾 PNG 저장 완료 (${canvas.width}×${canvas.height})`);
+            showToast(`💾 PNG 저장 완료 (${mainCanvas.width}×${mainCanvas.height})`);
         }
 
         // 시작
