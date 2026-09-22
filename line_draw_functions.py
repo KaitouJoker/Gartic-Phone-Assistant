@@ -344,29 +344,53 @@ def extract_paths_from_skeleton(skeleton):
         paths.append(full_path)
     return paths
 
-def vectorize_and_sort_paths(binary_image, line_epsilon, min_points=4, filter_small_loops=False):
-    raw_paths = extract_paths_from_skeleton(binary_image)
+def vectorize_and_sort_paths(binary_image, line_epsilon, min_points=3, filter_small_loops=False, scale_factor=1.0, offset=(0, 0)):
+    from skimage.morphology import skeletonize
+    # 입력 마스크를 항상 1픽셀 중심선으로 확실하게 뼈대화하여 두꺼운 선에 의한 지그재그 경로 및 과도한 분할 방지
+    skeleton = skeletonize(binary_image > 0)
+    raw_paths = extract_paths_from_skeleton(skeleton)
     vectorized_paths = []
+    x_offset, y_offset = offset
+    
     for path in raw_paths:
-        if len(path) < min_points: continue
-        cnt = np.array([[[x, y]] for y, x in path], dtype=np.int32)
-        # 열린 선(Open path)이므로 closed=False 적용. Epsilon 제한 없음!
-        approx = cv2.approxPolyDP(cnt, line_epsilon, False)
-        line_segment = [tuple(p[0]) for p in approx]
-        if len(line_segment) >= min_points:
+        if len(path) < min_points:
+            continue
+            
+        # 캔버스 실제 픽셀 좌표계로 먼저 변환하여 근사를 수행
+        # 이를 통해 Line Epsilon (px)이 분석 해상도나 축소율에 왜곡되지 않고 실제 캔버스 화면 픽셀 기준으로 1:1 정확히 계산됨
+        if scale_factor != 1.0 or offset != (0, 0):
+            canvas_pts = [[x_offset + x * scale_factor, y_offset + y * scale_factor] for y, x in path]
+        else:
+            canvas_pts = [[float(x), float(y)] for y, x in path]
+            
+        cnt = np.array([[[pt[0], pt[1]]] for pt in canvas_pts], dtype=np.float32)
+        if line_epsilon <= 0:
+            line_segment = [tuple(p[0]) for p in cnt]
+        else:
+            approx = cv2.approxPolyDP(cnt, line_epsilon, False)
+            line_segment = [tuple(p[0]) for p in approx]
+            
+        # 유효한 선분은 최소 2개의 점(시작점, 끝점)으로 구성되므로 >= 2 조건으로 보존
+        # 기존 min_points=4 조건으로 인해 직선/완만한 곡선이 통째로 삭제되던 버그 완벽 해결
+        if len(line_segment) >= 2:
+            seg_len = calculate_segment_length(line_segment)
+            if seg_len < 3.0:
+                continue # 3픽셀 미만의 미세 고립 잡점만 제거
+                
             if filter_small_loops and len(line_segment) >= 3:
-                # 시작점과 끝점이 매우 가까운 닫힌 루프(다각형)인지 확인
                 p_start, p_end = line_segment[0], line_segment[-1]
                 is_closed = (p_start[0] - p_end[0])**2 + (p_start[1] - p_end[1])**2 <= 25
-                seg_len = calculate_segment_length(line_segment)
                 if is_closed and seg_len < 35.0:
                     continue  # 지저분한 미세 다각형/얼룩 노이즈 제거
+                    
             vectorized_paths.append(line_segment)
-    if not vectorized_paths: return []
-    # 가장 많은 길이를 가진 라인 순서대로 그리도록 길이 기준 내림차순 정렬 (의도된 기본 사항)
+            
+    if not vectorized_paths:
+        return []
+        
+    # 가장 긴 라인 순서대로 그리도록 길이 기준 내림차순 정렬
     vectorized_paths.sort(key=calculate_segment_length, reverse=True)
     
-    # 순서는 길이 순으로 유지하되, 각 선의 방향(시작/끝)만 이전 선의 끝점과 가까운 쪽으로 결정하여 미세 최적화
     def distance(p1, p2): return (p1[0] - p2[0])**2 + (p1[1] - p2[1])**2
     sorted_paths = [vectorized_paths[0]]
     for p in vectorized_paths[1:]:
@@ -376,6 +400,7 @@ def vectorize_and_sort_paths(binary_image, line_epsilon, min_points=4, filter_sm
         if d2 < d1:
             p.reverse()
         sorted_paths.append(p)
+        
     return sorted_paths
 
 def align_plan_to_center(line_drawing_plan, canvas_width, canvas_height, logger=None):
@@ -418,15 +443,16 @@ def generate_plan_from_image(final_image, logger, line_epsilon, contour_mode, co
     skeleton = skeletonize(binary_image > 0)
     binary_image = (skeleton * 255).astype(np.uint8)
     
-    # DFS를 사용한 진짜 벡터화 및 TSP를 이용한 최단 이동거리 정렬 수행
-    line_drawing_plan = vectorize_and_sort_paths(binary_image, line_epsilon, min_points=4)
+    # DFS를 사용한 진짜 벡터화 및 TSP를 이용한 최단 이동거리 정렬 수행 (min_points=3으로 직선 보존)
+    line_drawing_plan = vectorize_and_sort_paths(binary_image, line_epsilon, min_points=3)
+    line_drawing_plan = [[(int(round(x)), int(round(y))) for x, y in seg] for seg in line_drawing_plan]
     logger.info(f"벡터화 및 TSP 정렬 완료: {len(line_drawing_plan)}개의 최적화된 경로 생성.")
     
     return line_drawing_plan
 
 def generate_preview_image(image_path, pipeline, combination_method, canvas_coords, precision, logger, line_epsilon, contour_mode, contour_method, use_denoise_filter=True, hatch_mode="외곽선 + 빗금", hatch_pattern="45° (대각선)", hatch_spacing=8, hatch_adaptive=True):
     logger.info(f"이미지 처리 시작 (조합 방식: {combination_method}, 노이즈 완화 필터: {'On' if use_denoise_filter else 'Off'})...")
-    if not image_path: return None
+    if not image_path: return None, None
     user_image, canvas_width, canvas_height = Image.open(image_path).convert("RGB"), canvas_coords[2]-canvas_coords[0], canvas_coords[3]-canvas_coords[1]
     img_width, img_height = user_image.size
     ratio = min(canvas_width / img_width, canvas_height / img_height) if img_width > 0 and img_height > 0 else 0
@@ -474,25 +500,35 @@ def generate_preview_image(image_path, pipeline, combination_method, canvas_coor
         adaptive=bool(hatch_adaptive)
     )
         
+    scale_factor = target_w / analysis_w if analysis_w > 0 else 1.0
+    x_offset, y_offset = (canvas_width - target_w) // 2, (canvas_height - target_h) // 2
+
     # DFS를 사용한 진짜 벡터화 및 TSP를 이용한 최단 이동거리 정렬 수행 (필터 켜짐 시 미세 루프 제거)
-    vectorized_plan = vectorize_and_sort_paths(combined_edges, line_epsilon, min_points=4, filter_small_loops=use_denoise_filter)
+    # 캔버스 실제 픽셀 좌표계로 먼저 변환한 후 approxPolyDP 근사를 수행하여 line_epsilon이 화면 픽셀 기준으로 1:1 정확히 계산됨
+    vectorized_plan = vectorize_and_sort_paths(
+        combined_edges, 
+        line_epsilon=line_epsilon, 
+        min_points=3, 
+        filter_small_loops=use_denoise_filter,
+        scale_factor=scale_factor,
+        offset=(x_offset, y_offset)
+    )
     logger.info(f"벡터화 및 TSP 정렬 완료: {len(vectorized_plan)}개의 최적화된 경로 생성.")
 
-    preview_image = Image.new("RGB", (canvas_width, canvas_height), (255, 255, 255)); preview_draw = ImageDraw.Draw(preview_image)
-    scale_factor = target_w / analysis_w if analysis_w > 0 else 0
-    x_offset, y_offset = (canvas_width - target_w) // 2, (canvas_height - target_h) // 2
-    temp_plan = []
-    
-    for approx in vectorized_plan:
-        line_segment = [(x_offset + int(x * scale_factor), y_offset + int(y * scale_factor)) for x, y in approx]
-        temp_plan.append(line_segment)
-            
     # 선화 내용물을 캔버스 좌/우 및 위/아래 중앙으로 완벽 정렬
-    temp_plan = align_plan_to_center(temp_plan, canvas_width, canvas_height, logger)
-    for segment in temp_plan: preview_draw.line(segment, fill=(0, 0, 0), width=1)
+    final_plan = align_plan_to_center(vectorized_plan, canvas_width, canvas_height, logger)
+    final_plan = [[(int(round(x)), int(round(y))) for x, y in seg] for seg in final_plan]
+
+    preview_image = Image.new("RGB", (canvas_width, canvas_height), (255, 255, 255))
+    preview_draw = ImageDraw.Draw(preview_image)
+    for segment in final_plan:
+        if len(segment) >= 2:
+            preview_draw.line(segment, fill=(0, 0, 0), width=1)
+        elif len(segment) == 1:
+            preview_draw.point(segment[0], fill=(0, 0, 0))
     
     # 캔버스 크기(canvas_width, canvas_height)를 그대로 유지하여 편집기 및 실제 그리기 좌표계와 일치
-    return preview_image
+    return preview_image, final_plan
 
 class AutoDrawerLine:
     def __init__(self, line_drawing_plan, canvas_area_str, update_cb, stop_event, logger, line_delay=0.001, mouse_duration=0, moves_per_second=0):
@@ -586,7 +622,7 @@ def format_duration(seconds):
     return f"{minutes}분 {rem_seconds}초"
 
 class EditorWindow(Toplevel):
-    def __init__(self, root, initial_image, line_epsilon, contour_mode, contour_method, start_callback, cancel_callback, uses_lineart_model=False, line_delay=0.01, mouse_duration=0.0, moves_per_second=0.0):
+    def __init__(self, root, initial_image, line_epsilon, contour_mode, contour_method, start_callback, cancel_callback, uses_lineart_model=False, line_delay=0.01, mouse_duration=0.0, moves_per_second=0.0, initial_plan=None):
         super().__init__(root)
         self.title("편집기"); self.start_callback, self.cancel_callback = start_callback, cancel_callback
         self.line_epsilon, self.contour_mode, self.contour_method = line_epsilon, contour_mode, contour_method
@@ -594,6 +630,8 @@ class EditorWindow(Toplevel):
         self.line_delay = line_delay
         self.mouse_duration = mouse_duration
         self.moves_per_second = moves_per_second
+        self.initial_plan = initial_plan
+        self.is_modified = False
         self.image = initial_image.copy(); self.img_w, self.img_h = self.image.size
         
         screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
@@ -636,10 +674,13 @@ class EditorWindow(Toplevel):
 
     def update_time_estimate(self):
         try:
-            plan = generate_plan_from_image(
-                self.image, logging.getLogger(), self.line_epsilon, 
-                self.contour_mode, self.contour_method, uses_lineart_model=self.uses_lineart_model
-            )
+            if not self.is_modified and self.initial_plan is not None:
+                plan = self.initial_plan
+            else:
+                plan = generate_plan_from_image(
+                    self.image, logging.getLogger(), self.line_epsilon, 
+                    self.contour_mode, self.contour_method, uses_lineart_model=self.uses_lineart_model
+                )
             est_seconds, total_lines, total_points = calculate_plan_time_estimate(
                 plan, self.line_delay, self.mouse_duration, self.moves_per_second
             )
@@ -698,6 +739,7 @@ class EditorWindow(Toplevel):
             draw = ImageDraw.Draw(self.image)
             if self.tool == "pencil": draw.line([(img_x1, img_y1), (img_x2, img_y2)], fill="black", width=2)
             elif self.tool == "eraser": es = self.eraser_size / scale; draw.ellipse([(img_x2-es, img_y2-es), (img_x2+es, img_y2+es)], fill="white")
+            self.is_modified = True
             self.last_pos = (x, y)
             self.redraw_canvas()
 
@@ -723,7 +765,11 @@ class EditorWindow(Toplevel):
         
     def on_start(self):
         # 크롭된 이미지가 아닌 원본 캔버스 크기 기준으로 plan 생성
-        final_plan = generate_plan_from_image(self.image, logging.getLogger(), self.line_epsilon, self.contour_mode, self.contour_method, uses_lineart_model=self.uses_lineart_model)
+        # 편집기에서 수정한 내용이 없다면 초기 미리보기 계산 계획을 100% 그대로 전달 (재벡터화/선 손실 방지)
+        if not self.is_modified and self.initial_plan is not None:
+            final_plan = self.initial_plan
+        else:
+            final_plan = generate_plan_from_image(self.image, logging.getLogger(), self.line_epsilon, self.contour_mode, self.contour_method, uses_lineart_model=self.uses_lineart_model)
         self.start_callback(final_plan); self.destroy()
         
     def on_cancel(self): self.cancel_callback(); self.destroy()

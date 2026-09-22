@@ -218,7 +218,7 @@ class LineDrawApp(ctk.CTk):
             except (ValueError, TypeError):
                 hatch_spacing = 8
 
-            self.preview_image = fn.generate_preview_image(
+            preview_result = fn.generate_preview_image(
                 image_path=self.image_path_var.get(), pipeline=pipeline, combination_method=self.combination_method_var.get(),
                 canvas_coords=tuple(map(int, self.canvas_area_var.get().split(","))), precision=int(self.precision_var.get().replace("%", "")), 
                 logger=self.logger, line_epsilon=float(self.line_epsilon_var.get()),
@@ -229,8 +229,13 @@ class LineDrawApp(ctk.CTk):
                 hatch_spacing=hatch_spacing,
                 hatch_adaptive=self.hatch_adaptive_var.get()
             )
-            if self.preview_image is None:
+            if preview_result is None or (isinstance(preview_result, tuple) and preview_result[0] is None):
                 self.logger.error("이미지 처리 실패. 그릴 내용이 없거나 오류 발생."); self.after(0, self.reset_start_button); return
+            if isinstance(preview_result, tuple):
+                self.preview_image, self.initial_plan = preview_result
+            else:
+                self.preview_image = preview_result
+                self.initial_plan = None
             self.logger.info("이미지 처리 완료. 편집 창을 표시합니다."); self.after(0, self.show_editor_window)
         except Exception as e:
             self.logger.error(f"이미지 처리 중 예외 발생: {e}"); self.after(0, self.reset_start_button)
@@ -250,7 +255,8 @@ class LineDrawApp(ctk.CTk):
             contour_mode=self.contour_mode_var.get(), contour_method=self.contour_method_var.get(),
             uses_lineart_model=getattr(self, 'uses_lineart_model', False),
             start_callback=self.finalize_and_start_drawing, cancel_callback=self.cancel_drawing,
-            line_delay=line_delay, mouse_duration=self.mouse_duration_var.get(), moves_per_second=moves_per_sec
+            line_delay=line_delay, mouse_duration=self.mouse_duration_var.get(), moves_per_second=moves_per_sec,
+            initial_plan=getattr(self, 'initial_plan', None)
         )
         self.wait_window(editor)
         # 편집기 창이 닫힌 후 항상 버튼을 리셋
