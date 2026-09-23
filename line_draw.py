@@ -313,8 +313,9 @@ class LineDrawApp(ctk.CTk):
         if area: var.set(f"{area[0]},{area[1]},{area[2]},{area[3]}"); self.logger.info(f"영역 저장: {var.get()}")
 
     def launch_kiosk_canvas(self):
-        import subprocess, os, webbrowser
+        import subprocess, os, webbrowser, tempfile
         html_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "gartic_phone_canvas.html"))
+        profile_dir = os.path.join(tempfile.gettempdir(), "gartic_canvas_profile")
         candidates = [
             r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
@@ -326,8 +327,15 @@ class LineDrawApp(ctk.CTk):
         for exe in candidates:
             if os.path.exists(exe):
                 try:
-                    subprocess.Popen([exe, "--kiosk", html_path])
-                    self.logger.info(f"가상 캔버스를 키오스크 모드로 실행했습니다: {exe}")
+                    subprocess.Popen([
+                        exe,
+                        f"--user-data-dir={profile_dir}",
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                        "--kiosk",
+                        html_path
+                    ])
+                    self.logger.info(f"가상 캔버스를 독립 프로필 키오스크 모드로 실행했습니다: {exe}")
                     launched = True
                     break
                 except Exception as e:

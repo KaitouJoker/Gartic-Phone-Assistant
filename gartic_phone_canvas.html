@@ -1280,6 +1280,13 @@
             showToast(`💾 PNG 저장 완료 (${mainCanvas.width}×${mainCanvas.height})`);
         }
 
+        // 페이지 이탈(외부 링크 이동, 새로고침, 실수로 닫기) 방지 보호
+        window.addEventListener('beforeunload', function(e) {
+            e.preventDefault();
+            e.returnValue = '';
+            return '';
+        });
+
         // 시작
         initCanvas();
         updateBrushPreview();
